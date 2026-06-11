@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// 엠파크 WMS - Firebase Storage 보안 규칙
+// 이미지: 조회는 공개(QR/목록 표시), 업로드/삭제는 관리자만 + 5MB·이미지 타입 제한
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

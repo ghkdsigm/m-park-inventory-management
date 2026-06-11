@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #app {
+    @apply h-full;
+  }
+  body {
+    @apply bg-slate-100 text-slate-800 antialiased;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  }
+  .btn-ghost {
+    @apply btn bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply btn bg-rose-600 text-white hover:bg-rose-700;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1.5 text-xs;
+  }
+  .input {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold text-slate-600;
+  }
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+}
+
+/* 인쇄 시: 화면 UI 숨기고 라벨 시트만 보이게 */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  body {
+    background: #fff;
+  }
+}
+.print-only {
+  display: none;
+}
+
+/* 스크롤바 슬림 */
+.scrollbar-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-slim::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300;
+}

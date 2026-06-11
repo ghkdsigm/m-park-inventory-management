@@ -1,0 +1,71 @@
+rules_version = '2';
+
+// 엠파크 WMS - Firestore 보안 규칙
+// 원칙:
+//   - 로그인 안 하면 전부 차단
+//   - 기준정보/상품/SKU "관리(생성·삭제·메타수정)"는 admin 만
+//   - 일반(user) 사용자는 조회 + 재고수량 변경(입고/출고/조정/실사)만 가능
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc().role == 'admin';
+    }
+    // 재고 작업 시 변경 가능한 필드만 수정했는지 검증
+    function onlyStockFields() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['qty', 'status', 'totalIn', 'totalOut', 'lastMovedBy', 'lastMovedAt', 'updatedAt']);
+    }
+
+    // 사용자 프로필
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if isSignedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'user'; // 권한 상승 방지
+      allow update, delete: if isAdmin();
+    }
+
+    // 기준정보 4단계 (조회: 로그인 / 관리: admin)
+    match /complexes/{id}      { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /categories/{id}     { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /productCodes/{id}   { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /productDetails/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+
+    // 상품 (관리: admin)
+    match /products/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // SKU: 생성/삭제/메타수정은 admin, 재고수량 변경은 로그인 사용자 허용
+    match /skus/{id} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (isSignedIn() && onlyStockFields());
+    }
+
+    // 재고 원장 (감사 로그): 본인 이름으로만 생성, 수정/삭제 불가
+    match /stockMovements/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.byUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // 코드 자동생성 시퀀스: 조회는 로그인, 증가(쓰기)는 코드 생성 주체인 admin 만
+    match /counters/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // 일별 집계: 입출고 시 로그인 사용자가 트랜잭션으로 갱신, 삭제 불가
+    match /dailyStats/{id} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if false;
+    }
+  }
+}
