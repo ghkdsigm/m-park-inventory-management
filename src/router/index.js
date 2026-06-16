@@ -65,6 +65,7 @@ const routes = [
 
       // ── 설정 ──
       { path: 'users', name: 'users', component: () => import('@/pages/admin/UsersView.vue'), meta: { admin: true } },
+      { path: 'audit', name: 'audit-log', component: () => import('@/pages/admin/AuditLogView.vue'), meta: { admin: true } },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },

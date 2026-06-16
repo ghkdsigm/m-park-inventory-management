@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router'
 import { complexes, categories, productCodes, productDetails } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
+import { usePagination } from '@/composables/usePagination'
+import Pager from '@/components/ui/Pager.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -44,6 +46,12 @@ const loading = ref(true)
 const ownList = ref([])
 const data = reactive({}) // 컬렉션별 전체 목록 (조상 선택용)
 const filterSel = reactive({}) // 상단 필터 선택값
+// 필터 기본값을 '' 로 → 셀렉트의 "전체 …" 가 기본 선택되도록
+watch(
+  chain,
+  (cols) => cols.forEach((c) => { if (filterSel[c] === undefined) filterSel[c] = '' }),
+  { immediate: true }
+)
 
 async function load() {
   loading.value = true
@@ -63,6 +71,7 @@ async function load() {
 onMounted(load)
 watch(key, () => {
   Object.keys(filterSel).forEach((k) => delete filterSel[k])
+  chain.value.forEach((c) => (filterSel[c] = '')) // 새 단계 필터도 "전체" 기본값
   load()
 })
 
@@ -82,6 +91,7 @@ const filtered = computed(() =>
     chain.value.every((c) => !filterSel[c] || o[META[c].idField] === filterSel[c])
   )
 )
+const { paged, page, pageSize, sizes, total, totalPages } = usePagination(filtered)
 // 상위 단계 필터가 바뀌면 하위 필터 초기화
 watch(
   () => chain.value.map((c) => filterSel[c]).join('|'),
@@ -157,7 +167,8 @@ async function save() {
     payload[META[c].nameField] = sel?.name || ''
     pathNames.push(sel?.name || '')
   })
-  payload.pathLabel = pathNames.join(' > ')
+  // 단지(최상위)는 path_label 컬럼이 없으므로 조상이 있을 때만 포함
+  if (chain.value.length) payload.pathLabel = pathNames.join(' > ')
 
   try {
     if (editing.value) {
@@ -195,6 +206,7 @@ async function remove(item) {
 <template>
   <div>
     <PageHeader :title="meta.label + '관리'" :subtitle="meta.sub">
+      <select v-model="pageSize" class="input w-auto"><option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option></select>
       <button class="btn-primary" @click="openCreate">+ {{ meta.label }} 추가</button>
     </PageHeader>
 
@@ -206,7 +218,8 @@ async function remove(item) {
       </select>
     </div>
 
-    <div class="card overflow-hidden">
+    <div class="card">
+      <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
       <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">등록된 {{ meta.label }}가 없습니다.</div>
       <table v-else class="w-full text-sm">
@@ -220,7 +233,7 @@ async function remove(item) {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="item in filtered" :key="item.id" class="hover:bg-slate-50/60">
+          <tr v-for="item in paged" :key="item.id" class="hover:bg-slate-50/60">
             <td v-if="chain.length" class="px-4 py-3 text-xs text-slate-400">{{ item.pathLabel || '—' }}</td>
             <td class="px-4 py-3"><span class="badge bg-brand-50 font-mono text-brand-700">{{ item.code }}</span></td>
             <td class="px-4 py-3 font-medium text-slate-800">{{ item.name }}</td>
@@ -232,6 +245,8 @@ async function remove(item) {
           </tr>
         </tbody>
       </table>
+      </div>
+      <Pager v-if="filtered.length" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
 
     <BaseModal v-model="modal" :title="(editing ? meta.label + ' 수정' : meta.label + ' 추가')">

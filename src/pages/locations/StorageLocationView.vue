@@ -3,6 +3,8 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { complexes, zones, subZones, storageLocations } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
+import { usePagination } from '@/composables/usePagination'
+import Pager from '@/components/ui/Pager.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -18,6 +20,14 @@ const zonesAll = ref([])
 const subsAll = ref([])
 const search = ref('')
 const filterComplex = ref('')
+const fZone = ref('')
+const fSub = ref('')
+
+// 조회 연쇄 셀렉트 옵션
+const zoneFilterOptions = computed(() => (filterComplex.value ? zonesAll.value.filter((z) => z.complexId === filterComplex.value) : zonesAll.value))
+const subFilterOptions = computed(() => (fZone.value ? subsAll.value.filter((s) => s.zoneId === fZone.value) : []))
+watch(filterComplex, () => { fZone.value = ''; fSub.value = '' })
+watch(fZone, () => { fSub.value = '' })
 
 async function load() {
   loading.value = true
@@ -39,6 +49,8 @@ onMounted(load)
 const filtered = computed(() =>
   list.value.filter((l) => {
     if (filterComplex.value && l.complexId !== filterComplex.value) return false
+    if (fZone.value && l.zoneId !== fZone.value) return false
+    if (fSub.value && l.subZoneId !== fSub.value) return false
     if (search.value) {
       const q = search.value.toLowerCase()
       return [l.code, l.name, l.complexName, l.locationLabel].some((v) => (v || '').toLowerCase().includes(q))
@@ -46,6 +58,7 @@ const filtered = computed(() =>
     return true
   })
 )
+const { paged, page, pageSize, sizes, total, totalPages } = usePagination(filtered)
 
 function fullLabel(l) {
   return [l.complexName, l.zoneName, l.subZoneName, l.name].filter(Boolean).join(' › ')
@@ -58,8 +71,9 @@ const form = reactive({ code: '', complexId: '', zoneId: '', subZoneId: '', name
 
 const formZones = computed(() => zonesAll.value.filter((z) => z.complexId === form.complexId))
 const formSubs = computed(() => subsAll.value.filter((s) => s.zoneId === form.zoneId))
-watch(() => form.complexId, () => { form.zoneId = ''; form.subZoneId = '' })
-watch(() => form.zoneId, () => { form.subZoneId = '' })
+// 사용자가 직접 바꿀 때만 하위 초기화 (수정 팝업의 사전값이 지워지지 않도록 watch 대신 @change)
+function onFormComplexChange() { form.zoneId = ''; form.subZoneId = '' }
+function onFormZoneChange() { form.subZoneId = '' }
 
 function openCreate() {
   if (!complexList.value.length) return toast.error('먼저 단지를 등록하세요.')
@@ -129,14 +143,26 @@ async function remove(l) {
     </PageHeader>
 
     <div class="no-print mb-3 flex flex-wrap items-center gap-2">
-      <input v-model="search" class="input w-auto flex-1 sm:max-w-xs" placeholder="코드/위치명 검색" />
       <select v-model="filterComplex" class="input w-auto">
         <option value="">전체 단지</option>
         <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
       </select>
+      <select v-model="fZone" class="input w-auto" :disabled="!filterComplex">
+        <option value="">전체 구역</option>
+        <option v-for="z in zoneFilterOptions" :key="z.id" :value="z.id">{{ z.name }}</option>
+      </select>
+      <select v-model="fSub" class="input w-auto" :disabled="!fZone">
+        <option value="">전체 상세구역</option>
+        <option v-for="s in subFilterOptions" :key="s.id" :value="s.id">{{ s.name }}</option>
+      </select>
+      <input v-model="search" class="input w-full sm:w-64" placeholder="코드/위치명 검색" />
+      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+        <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
+      </select>
     </div>
 
-    <div class="card overflow-hidden">
+    <div class="card">
+      <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
       <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">등록된 보관위치가 없습니다.</div>
       <table v-else class="w-full text-sm">
@@ -148,7 +174,7 @@ async function remove(l) {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="l in filtered" :key="l.id" class="hover:bg-slate-50/60">
+          <tr v-for="l in paged" :key="l.id" class="hover:bg-slate-50/60">
             <td class="px-4 py-3"><span class="badge bg-brand-50 font-mono text-brand-700">{{ l.code }}</span></td>
             <td class="px-4 py-3">
               <span class="font-medium text-slate-800">📍 {{ fullLabel(l) }}</span>
@@ -160,6 +186,8 @@ async function remove(l) {
           </tr>
         </tbody>
       </table>
+      </div>
+      <Pager v-if="filtered.length" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
 
     <BaseModal v-model="modal" :title="editing ? '보관위치 수정' : '보관위치 추가'">
@@ -171,14 +199,14 @@ async function remove(l) {
         </div>
         <div>
           <label class="label">단지 <span class="text-rose-500">*</span></label>
-          <select v-model="form.complexId" class="input">
+          <select v-model="form.complexId" class="input" @change="onFormComplexChange">
             <option value="">단지 선택</option>
             <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </div>
         <div>
           <label class="label">구역 <span class="text-slate-300">(선택)</span></label>
-          <select v-model="form.zoneId" class="input" :disabled="!form.complexId">
+          <select v-model="form.zoneId" class="input" :disabled="!form.complexId" @change="onFormZoneChange">
             <option value="">선택 안 함</option>
             <option v-for="z in formZones" :key="z.id" :value="z.id">{{ z.name }}</option>
           </select>

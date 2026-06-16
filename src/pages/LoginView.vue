@@ -28,21 +28,25 @@ function krError(e) {
 }
 
 async function submit() {
-  if (!email.value || !password.value) {
+  // 붙여넣기 시 끼어드는 공백/줄바꿈/비ASCII 정리
+  const em = (email.value || '').trim().replace(/\s/g, '')
+  const pw = password.value || ''
+  if (!em || !pw) {
     toast.error('이메일과 비밀번호를 입력하세요.')
     return
   }
   loading.value = true
   try {
     if (mode.value === 'login') {
-      await auth.login(email.value, password.value)
+      await auth.login(em, pw)
     } else {
-      await auth.register(email.value, password.value, displayName.value)
+      await auth.register(em, pw, displayName.value.trim())
       toast.success('가입 완료! 환영합니다.')
     }
     const redirect = route.query.redirect || '/'
     router.replace(redirect)
   } catch (e) {
+    console.error('[Auth] 원본 에러:', e?.message || e)
     toast.error(krError(e))
   } finally {
     loading.value = false

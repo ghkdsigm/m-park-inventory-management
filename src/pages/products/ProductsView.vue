@@ -3,6 +3,8 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { products, complexes, categories, productCodes, productDetails } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
+import { usePagination } from '@/composables/usePagination'
+import Pager from '@/components/ui/Pager.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -14,11 +16,11 @@ const toast = useToast()
 const { busy: saving, run } = useBusy()
 const confirm = ref(null)
 
-// 기준정보 체인 (단지만 필수)
+// 기준정보 체인 (단지·카테고리·제품코드 필수, 제품상세코드만 선택)
 const CHAIN = [
   { col: 'complexes', board: complexes, label: '단지', idField: 'complexId', nameField: 'complexName', required: true },
-  { col: 'categories', board: categories, label: '카테고리', idField: 'categoryId', nameField: 'categoryName', parentId: 'complexId' },
-  { col: 'productCodes', board: productCodes, label: '제품코드', idField: 'productCodeId', nameField: 'productCodeName', parentId: 'categoryId' },
+  { col: 'categories', board: categories, label: '카테고리', idField: 'categoryId', nameField: 'categoryName', parentId: 'complexId', required: true },
+  { col: 'productCodes', board: productCodes, label: '제품코드', idField: 'productCodeId', nameField: 'productCodeName', parentId: 'categoryId', required: true },
   { col: 'productDetails', board: productDetails, label: '제품상세코드', idField: 'productDetailId', nameField: 'productDetailName', parentId: 'productCodeId' },
 ]
 
@@ -26,7 +28,8 @@ const loading = ref(true)
 const list = ref([])
 const data = reactive({}) // 기준정보 목록
 const search = ref('')
-const filterSel = reactive({})
+// 필터 기본값 '' → 셀렉트 "전체 …" 가 기본 선택되도록
+const filterSel = reactive(Object.fromEntries(CHAIN.map((c) => [c.col, ''])))
 
 async function load() {
   loading.value = true
@@ -61,6 +64,7 @@ const filtered = computed(() =>
     return true
   })
 )
+const { paged, page, pageSize, sizes, total, totalPages } = usePagination(filtered)
 watch(
   () => CHAIN.map((c) => filterSel[c.col]).join('|'),
   () => {
@@ -129,7 +133,9 @@ watch(
 
 async function save() {
   if (!form.name.trim()) return toast.error('상품명을 입력하세요.')
-  if (!form.sel.complexes) return toast.error('단지(필수)를 선택하세요.')
+  for (const c of CHAIN) {
+    if (c.required && !form.sel[c.col]) return toast.error(`${c.label}(필수)를 선택하세요.`)
+  }
 
   const payload = {
     name: form.name.trim(),
@@ -194,14 +200,18 @@ async function remove(p) {
     </PageHeader>
 
     <div class="no-print mb-3 flex flex-wrap items-center gap-2">
-      <input v-model="search" class="input w-auto flex-1 sm:max-w-xs" placeholder="상품명/제조사/바코드 검색" />
       <select v-for="(c, i) in CHAIN" :key="c.col" v-model="filterSel[c.col]" class="input w-auto">
         <option value="">전체 {{ c.label }}</option>
         <option v-for="o in options(i, filterSel)" :key="o.id" :value="o.id">{{ o.name }}</option>
       </select>
+      <input v-model="search" class="input w-full sm:w-64" placeholder="상품명/제조사/바코드 검색" />
+      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+        <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
+      </select>
     </div>
 
-    <div class="card overflow-hidden">
+    <div class="card">
+      <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
       <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">등록된 상품이 없습니다.</div>
       <table v-else class="w-full text-sm">
@@ -214,7 +224,7 @@ async function remove(p) {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="p in filtered" :key="p.id" class="hover:bg-slate-50/60">
+          <tr v-for="p in paged" :key="p.id" class="hover:bg-slate-50/60">
             <td class="px-4 py-3">
               <div class="flex items-center gap-3">
                 <img :src="resolveProductImage(p)" class="h-10 w-10 shrink-0 rounded-lg border border-slate-100 object-cover" alt="" />
@@ -235,6 +245,8 @@ async function remove(p) {
           </tr>
         </tbody>
       </table>
+      </div>
+      <Pager v-if="filtered.length" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
 
     <BaseModal v-model="modal" :title="editing ? '상품 수정' : '상품 등록'" size="lg">

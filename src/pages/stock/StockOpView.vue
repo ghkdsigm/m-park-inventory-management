@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { skus, complexes, storageLocations, applyStock, listMovements } from '@/services/db'
+import { skus, complexes, categories, productCodes, productDetails, storageLocations, applyStock, listMovements } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -13,28 +13,45 @@ const auth = useAuthStore()
 const toast = useToast()
 
 const OP = {
-  in: { title: '입고관리', sub: 'SKU를 선택하고 입고 수량을 입력하세요.', qtyLabel: '입고 수량', btn: '입고 처리', btnClass: 'bg-emerald-600 hover:bg-emerald-700', mode: 'add' },
-  out: { title: '출고관리', sub: 'SKU를 선택하고 출고 수량을 입력하세요.', qtyLabel: '출고 수량', btn: '출고 처리', btnClass: 'bg-sky-600 hover:bg-sky-700', mode: 'add' },
+  in: { title: '입고관리', sub: 'SKU를 선택하고 입고 수량을 입력하세요.', qtyLabel: '신규 입고 수량', btn: '입고 처리', btnClass: 'bg-emerald-600 hover:bg-emerald-700', mode: 'add' },
+  out: { title: '출고관리', sub: 'SKU를 선택하고 출고 수량을 입력하세요.', qtyLabel: '신규 출고 수량', btn: '출고 처리', btnClass: 'bg-sky-600 hover:bg-sky-700', mode: 'add' },
   adjust: { title: '재고조정', sub: '실제 재고와 시스템 재고가 다를 때 보정합니다.', qtyLabel: '조정 후 재고수량', btn: '재고 조정', btnClass: 'bg-amber-500 hover:bg-amber-600', mode: 'set' },
   audit: { title: '재고실사', sub: '실물 카운트 결과를 입력해 재고를 확정합니다.', qtyLabel: '실사 재고수량', btn: '실사 확정', btnClass: 'bg-violet-600 hover:bg-violet-700', mode: 'set' },
 }
 const op = computed(() => route.meta.op)
 const cfg = computed(() => OP[op.value])
 
-// 재고조정 사유 (필수)
-const REASONS = ['파손', '분실', '도난', '오입력 정정', '유통기한 경과', '입고 오류', '기타']
+// 작업별 사유/구분 (필수)
+const ADJUST_REASONS = ['위치 지정', '위치 지정 변경', '파손', '분실', '도난', '오입력 정정', '유통기한 경과', '입고 오류', '기타']
+const IN_REASONS = ['구매입고', '반품입고', '이동입고', '재고보충', '생산입고', '기타']
+const OUT_REASONS = ['판매/사용', '폐기', '반품출고', '이동출고', '샘플/전시', '기타']
 const reason = ref('')
+const reasonOptions = computed(() => (op.value === 'in' ? IN_REASONS : op.value === 'out' ? OUT_REASONS : ADJUST_REASONS))
+const reasonLabel = computed(() => (op.value === 'adjust' ? '조정 사유' : '사유 / 구분'))
 
 const loading = ref(true)
 const list = ref([])
 const complexList = ref([])
+const categoryList = ref([])
+const productCodeList = ref([])
+const productDetailList = ref([])
 const search = ref('')
 const filterComplex = ref('')
+const fCategory = ref('')
+const fProductCode = ref('')
+const fProductDetail = ref('')
+const catOptions = computed(() => (filterComplex.value ? categoryList.value.filter((c) => c.complexId === filterComplex.value) : categoryList.value))
+const pcOptions = computed(() => (fCategory.value ? productCodeList.value.filter((p) => p.categoryId === fCategory.value) : productCodeList.value))
+const pdOptions = computed(() => (fProductCode.value ? productDetailList.value.filter((d) => d.productCodeId === fProductCode.value) : productDetailList.value))
+watch(filterComplex, () => { fCategory.value = ''; fProductCode.value = ''; fProductDetail.value = '' })
+watch(fCategory, () => { fProductCode.value = ''; fProductDetail.value = '' })
+watch(fProductCode, () => { fProductDetail.value = '' })
 const selectedId = ref('')
 const qty = ref(1)
 const memo = ref('')
 const working = ref(false)
 const movements = ref([])
+const imgModal = ref(false)
 
 // 보관위치(재고조정용) — 단지(SKU 고정) › 구역 › 상세구역 › 보관위치 연쇄 선택
 const storageLocs = ref([])
@@ -75,11 +92,8 @@ function onSubChange() {
 async function load() {
   loading.value = true
   try {
-    ;[list.value, complexList.value, storageLocs.value] = await Promise.all([
-      skus.list(),
-      complexes.list(),
-      storageLocations.list(),
-    ])
+    ;[list.value, complexList.value, storageLocs.value, categoryList.value, productCodeList.value, productDetailList.value] =
+      await Promise.all([skus.list(), complexes.list(), storageLocations.list(), categories.list(), productCodes.list(), productDetails.list()])
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))
   } finally {
@@ -95,6 +109,9 @@ watch(op, () => {
 const filtered = computed(() =>
   list.value.filter((s) => {
     if (filterComplex.value && s.complexId !== filterComplex.value) return false
+    if (fCategory.value && s.categoryId !== fCategory.value) return false
+    if (fProductCode.value && s.productCodeId !== fProductCode.value) return false
+    if (fProductDetail.value && s.productDetailId !== fProductDetail.value) return false
     if (search.value) {
       const q = search.value.toLowerCase()
       return [s.code, s.productName, s.spec].some((v) => (v || '').toLowerCase().includes(q))
@@ -166,11 +183,13 @@ async function submit() {
   const v = Number(qty.value)
   if (!Number.isFinite(v) || v < 0) return toast.error('수량을 올바르게 입력하세요.')
   if (cfg.value.mode === 'add' && v <= 0) return toast.error('수량은 1 이상이어야 합니다.')
-  if (op.value === 'adjust' && !reason.value) return toast.error('조정 사유를 선택하세요.')
+  if (!reason.value) return toast.error('사유를 선택하세요.')
+  // 메모(거래처/사유)는 "기타" 일 때만 의미 있음
+  const memoVal = reason.value === '기타' ? memo.value : ''
 
   working.value = true
   try {
-    const r = await applyStock(selected.value.id, op.value, v, auth.actor, memo.value, reason.value)
+    const r = await applyStock(selected.value.id, op.value, v, auth.actor, memoVal, reason.value)
     toast.success(`${cfg.value.title} 완료 · 재고 ${r.before} → ${r.after}개`)
     // 로컬 반영
     const idx = list.value.findIndex((s) => s.id === selected.value.id)
@@ -196,16 +215,28 @@ const fmtTime = fmtDateTime
       <!-- SKU 선택 -->
       <div class="card lg:col-span-3">
         <div class="flex flex-wrap items-center gap-2 border-b border-slate-100 p-3">
-          <input
-            v-model="search"
-            class="input w-auto flex-1"
-            placeholder="SKU코드/상품명 검색 (코드 입력 후 Enter=바로선택)"
-            @keyup.enter="pickByCode"
-          />
           <select v-model="filterComplex" class="input w-auto">
             <option value="">전체 단지</option>
             <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
+          <select v-model="fCategory" class="input w-auto">
+            <option value="">전체 카테고리</option>
+            <option v-for="c in catOptions" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+          <select v-model="fProductCode" class="input w-auto">
+            <option value="">전체 제품코드</option>
+            <option v-for="p in pcOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+          <select v-model="fProductDetail" class="input w-auto">
+            <option value="">전체 상세코드</option>
+            <option v-for="d in pdOptions" :key="d.id" :value="d.id">{{ d.name }}</option>
+          </select>
+          <input
+            v-model="search"
+            class="input w-full flex-1 sm:ml-auto sm:w-auto"
+            placeholder="SKU코드/상품명 검색 (코드 입력 후 Enter=바로선택)"
+            @keyup.enter="pickByCode"
+          />
         </div>
         <div class="max-h-[60vh] overflow-y-auto scrollbar-slim">
           <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
@@ -233,7 +264,7 @@ const fmtTime = fmtDateTime
         <div class="card sticky top-4 p-5">
           <div v-if="!selected" class="py-10 text-center text-sm text-slate-400">왼쪽에서 SKU를 선택하세요.</div>
           <template v-else>
-            <img :src="resolveImage(selected)" class="mb-3 h-32 w-full rounded-lg border border-slate-100 bg-slate-50 object-cover" alt="" />
+            <img :src="resolveImage(selected)" class="mb-3 h-48 w-full cursor-zoom-in rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="" title="클릭하면 크게 보기" @click="imgModal = true" />
             <p class="font-mono text-lg font-bold text-slate-800">{{ selected.code }}</p>
             <p class="text-sm text-slate-600">{{ selected.productName }} <span v-if="selected.spec" class="text-slate-400">· {{ selected.spec }}</span></p>
             <p class="text-xs text-slate-400">{{ selected.pathLabel }}</p>
@@ -246,11 +277,11 @@ const fmtTime = fmtDateTime
             <label class="label">{{ cfg.qtyLabel }}</label>
             <input v-model.number="qty" type="number" min="0" class="input mb-3 text-lg" />
 
-            <div v-if="op === 'adjust'" class="mb-3">
-              <label class="label">조정 사유 *</label>
+            <div class="mb-3">
+              <label class="label">{{ reasonLabel }} *</label>
               <select v-model="reason" class="input">
                 <option value="">사유 선택</option>
-                <option v-for="r in REASONS" :key="r" :value="r">{{ r }}</option>
+                <option v-for="r in reasonOptions" :key="r" :value="r">{{ r }}</option>
               </select>
             </div>
 
@@ -285,8 +316,10 @@ const fmtTime = fmtDateTime
               </p>
             </div>
 
-            <label class="label">메모 (선택)</label>
-            <input v-model="memo" class="input mb-4" placeholder="거래처/사유 등" />
+            <div v-if="reason === '기타'" class="mb-4">
+              <label class="label">거래처 / 사유</label>
+              <input v-model="memo" class="input" placeholder="거래처명 또는 상세 사유를 입력하세요" />
+            </div>
 
             <button class="btn w-full py-3 text-base text-white" :class="cfg.btnClass" :disabled="working" @click="submit">
               {{ working ? '처리 중…' : cfg.btn }}
@@ -308,5 +341,32 @@ const fmtTime = fmtDateTime
         </div>
       </div>
     </div>
+
+    <!-- 이미지 크게 보기 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="imgModal && selected"
+          class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
+          @click="imgModal = false"
+        >
+          <img :src="resolveImage(selected)" class="max-h-[90vh] max-w-full rounded-lg object-contain" alt="" />
+          <button class="absolute right-4 top-4 rounded-full bg-white/20 p-2 text-white hover:bg-white/30" @click.stop="imgModal = false">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>

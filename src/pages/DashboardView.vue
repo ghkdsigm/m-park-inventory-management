@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { complexes, products, skus, recentMovements, getTodayStats } from '@/services/db'
+import { complexes, products, skus, recentMovements, getTodayStats, auditTopUsers, topProductsBySku, topChangedSkus } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -15,6 +15,9 @@ const moves = ref([])
 const today = ref(null)
 const lifeStat = ref({ soon: 0, over: 0 })
 const lifeList = ref([])
+const topUsers = ref([])
+const topProds = ref([])
+const topSkus = ref([])
 
 const typeLabel = { in: '입고', out: '출고', adjust: '조정', audit: '실사' }
 const typeColor = { in: 'bg-emerald-500', out: 'bg-sky-500', adjust: 'bg-amber-500', audit: 'bg-violet-500' }
@@ -50,6 +53,14 @@ onMounted(async () => {
       .filter((s) => s._st === 'soon' || s._st === 'over')
       .sort((a, b) => (a._d ?? 1e9) - (b._d ?? 1e9))
       .slice(0, 6)
+
+    // 관리자 통계 (admin 전용)
+    if (auth.isAdmin) {
+      const [tu, tp, ts2] = await Promise.all([auditTopUsers(10), topProductsBySku(10), topChangedSkus(10)])
+      topUsers.value = tu
+      topProds.value = tp
+      topSkus.value = ts2
+    }
   } finally {
     loading.value = false
   }
@@ -155,6 +166,40 @@ const fmtTime = fmtDateTime
               <span class="shrink-0 text-xs text-slate-400">{{ m.before }}→{{ m.after }} · {{ fmtTime(m.at) }}</span>
             </li>
           </ul>
+        </div>
+      </div>
+
+      <!-- 관리자 통계 (admin 전용) -->
+      <div v-if="auth.isAdmin" class="mt-4 grid gap-4 lg:grid-cols-3">
+        <div class="card p-5">
+          <h3 class="mb-3 text-sm font-bold text-slate-700">등록 많은 관리자 TOP10</h3>
+          <div v-if="!topUsers.length" class="py-6 text-center text-sm text-slate-300">데이터 없음</div>
+          <ol v-else class="space-y-1.5 text-sm">
+            <li v-for="(u, i) in topUsers" :key="i" class="flex items-center justify-between">
+              <span class="flex items-center gap-2"><span class="w-5 text-right font-bold text-brand-500">{{ i + 1 }}</span> <span class="text-slate-700">{{ u.name }}</span></span>
+              <span class="badge bg-brand-50 text-brand-700">{{ u.cnt }}건</span>
+            </li>
+          </ol>
+        </div>
+        <div class="card p-5">
+          <h3 class="mb-3 text-sm font-bold text-slate-700">SKU 많은 상품 TOP10</h3>
+          <div v-if="!topProds.length" class="py-6 text-center text-sm text-slate-300">데이터 없음</div>
+          <ol v-else class="space-y-1.5 text-sm">
+            <li v-for="(p, i) in topProds" :key="i" class="flex items-center justify-between">
+              <span class="flex min-w-0 items-center gap-2"><span class="w-5 shrink-0 text-right font-bold text-brand-500">{{ i + 1 }}</span> <span class="truncate text-slate-700">{{ p.productName }}</span></span>
+              <span class="badge shrink-0 bg-slate-100 text-slate-600">{{ p.skuCount }} SKU</span>
+            </li>
+          </ol>
+        </div>
+        <div class="card p-5">
+          <h3 class="mb-3 text-sm font-bold text-slate-700">변경 많은 SKU TOP10</h3>
+          <div v-if="!topSkus.length" class="py-6 text-center text-sm text-slate-300">데이터 없음</div>
+          <ol v-else class="space-y-1.5 text-sm">
+            <li v-for="(s, i) in topSkus" :key="i" class="flex items-center justify-between">
+              <span class="flex min-w-0 items-center gap-2"><span class="w-5 shrink-0 text-right font-bold text-brand-500">{{ i + 1 }}</span> <span class="truncate font-mono text-xs text-slate-700">{{ s.label }}</span></span>
+              <span class="badge shrink-0 bg-amber-50 text-amber-700">{{ s.cnt }}회</span>
+            </li>
+          </ol>
         </div>
       </div>
 

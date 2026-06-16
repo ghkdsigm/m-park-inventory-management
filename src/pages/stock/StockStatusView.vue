@@ -1,10 +1,13 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { skus, complexes, categories, productCodes } from '@/services/db'
+import { skus, complexes, categories, productCodes, productDetails, listLocationLogs } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import BaseModal from '@/components/ui/BaseModal.vue'
+import Pager from '@/components/ui/Pager.vue'
+import { usePagination } from '@/composables/usePagination'
 import { resolveImage } from '@/utils/image'
-import { lifecycleStatus, toJsDate } from '@/utils/date'
+import { lifecycleStatus, toJsDate, fmtDateTime } from '@/utils/date'
 
 function lifeBadge(s) {
   if (!s.lifecycleEnabled) return null
@@ -14,17 +17,38 @@ function lifeBadge(s) {
   return null
 }
 
+// 보관위치 + 변경 이력 팝업
+const locModal = ref(false)
+const locSku = ref(null)
+const locLogs = ref([])
+const locLoading = ref(false)
+async function openLocation(s) {
+  locSku.value = s
+  locLogs.value = []
+  locModal.value = true
+  locLoading.value = true
+  try {
+    locLogs.value = await listLocationLogs(s.id, 50)
+  } catch (e) {
+    /* 무시 */
+  } finally {
+    locLoading.value = false
+  }
+}
+
 const toast = useToast()
 const loading = ref(true)
 const list = ref([])
 const complexList = ref([])
 const categoryList = ref([])
 const productCodeList = ref([])
+const productDetailList = ref([])
 
 const search = ref('')
 const fComplex = ref('')
 const fCategory = ref('')
 const fProductCode = ref('')
+const fProductDetail = ref('')
 const fStatus = ref('')
 const sort = ref('recent')
 const groupByComplex = ref(false)
@@ -48,11 +72,12 @@ const STATUS = [
 async function load() {
   loading.value = true
   try {
-    ;[list.value, complexList.value, categoryList.value, productCodeList.value] = await Promise.all([
+    ;[list.value, complexList.value, categoryList.value, productCodeList.value, productDetailList.value] = await Promise.all([
       skus.list(),
       complexes.list(),
       categories.list(),
       productCodes.list(),
+      productDetails.list(),
     ])
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))
@@ -64,14 +89,17 @@ onMounted(load)
 
 const categoryOptions = computed(() => (fComplex.value ? categoryList.value.filter((c) => c.complexId === fComplex.value) : categoryList.value))
 const productCodeOptions = computed(() => (fCategory.value ? productCodeList.value.filter((p) => p.categoryId === fCategory.value) : productCodeList.value))
-watch(fComplex, () => { fCategory.value = ''; fProductCode.value = '' })
-watch(fCategory, () => { fProductCode.value = '' })
+const productDetailOptions = computed(() => (fProductCode.value ? productDetailList.value.filter((d) => d.productCodeId === fProductCode.value) : productDetailList.value))
+watch(fComplex, () => { fCategory.value = ''; fProductCode.value = ''; fProductDetail.value = '' })
+watch(fCategory, () => { fProductCode.value = ''; fProductDetail.value = '' })
+watch(fProductCode, () => { fProductDetail.value = '' })
 
 const filtered = computed(() => {
   let arr = list.value.filter((s) => {
     if (fComplex.value && s.complexId !== fComplex.value) return false
     if (fCategory.value && s.categoryId !== fCategory.value) return false
     if (fProductCode.value && s.productCodeId !== fProductCode.value) return false
+    if (fProductDetail.value && s.productDetailId !== fProductDetail.value) return false
     if (fStatus.value && s.status !== fStatus.value) return false
     if (search.value) {
       const q = search.value.toLowerCase()
@@ -89,6 +117,7 @@ const filtered = computed(() => {
   }
   return [...arr].sort(cmp[sort.value])
 })
+const { paged, page, pageSize, sizes, total, totalPages } = usePagination(filtered)
 
 const grouped = computed(() => {
   const g = {}
@@ -110,7 +139,7 @@ const statusMeta = {
 }
 
 function resetFilters() {
-  search.value = ''; fComplex.value = ''; fCategory.value = ''; fProductCode.value = ''; fStatus.value = ''; sort.value = 'recent'
+  search.value = ''; fComplex.value = ''; fCategory.value = ''; fProductCode.value = ''; fProductDetail.value = ''; fStatus.value = ''; sort.value = 'recent'
 }
 </script>
 
@@ -132,17 +161,22 @@ function resetFilters() {
 
     <!-- 필터 -->
     <div class="mb-3 flex flex-wrap items-center gap-2">
-      <input v-model="search" class="input w-auto flex-1 sm:max-w-xs" placeholder="SKU코드/상품명 검색" />
       <select v-model="fComplex" class="input w-auto"><option value="">전체 단지</option><option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option></select>
       <select v-model="fCategory" class="input w-auto"><option value="">전체 카테고리</option><option v-for="c in categoryOptions" :key="c.id" :value="c.id">{{ c.name }}</option></select>
       <select v-model="fProductCode" class="input w-auto"><option value="">전체 제품코드</option><option v-for="p in productCodeOptions" :key="p.id" :value="p.id">{{ p.name }}</option></select>
+      <select v-model="fProductDetail" class="input w-auto"><option value="">전체 상세코드</option><option v-for="d in productDetailOptions" :key="d.id" :value="d.id">{{ d.name }}</option></select>
       <select v-model="fStatus" class="input w-auto"><option v-for="s in STATUS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
       <select v-model="sort" class="input w-auto"><option v-for="s in SORTS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+      <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명 검색" />
       <button class="btn-ghost btn-sm" :class="showTotal ? 'bg-brand-50 text-brand-700 ring-brand-300' : ''" @click="showTotal = !showTotal">합계 보기</button>
       <button class="btn-ghost btn-sm" @click="resetFilters">초기화</button>
+      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+        <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
+      </select>
     </div>
 
-    <div class="card overflow-hidden">
+    <div class="card">
+      <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
       <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">조건에 맞는 재고가 없습니다.</div>
       <table v-else class="w-full text-sm">
@@ -164,7 +198,7 @@ function resetFilters() {
             <tr v-for="s in rows" :key="s.id" class="hover:bg-slate-50/60">
               <td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" /><div><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span><p class="mt-0.5 text-slate-700">{{ s.productName }} <span class="text-xs text-slate-400">{{ s.spec }}</span></p></div></div></td>
               <td class="hidden px-3 py-2.5 text-xs text-slate-400 md:table-cell">{{ s.pathLabel }}</td>
-              <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><span v-if="s.locationLabel" class="text-slate-500">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">미지정</span><span v-if="s.locationVerifiedAt" class="ml-1 text-emerald-600" title="실사 검증됨">✓</span></td>
+              <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-left ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:ring-brand-300" title="보관위치 이력 보기" @click="openLocation(s)"><span v-if="s.locationLabel" class="text-slate-600">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">위치 미지정</span><span v-if="s.locationVerifiedAt" class="text-emerald-600" title="실사 검증됨">✓</span><svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
               <td class="px-3 py-2.5 text-right font-bold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-800'">{{ s.qty }}</td>
               <td class="hidden px-3 py-2.5 text-right text-slate-400 sm:table-cell">{{ s.safetyStock || '—' }}</td>
               <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span><span v-if="lifeBadge(s)" class="badge ml-1" :class="lifeBadge(s).c">{{ lifeBadge(s).t }}</span></td>
@@ -174,10 +208,10 @@ function resetFilters() {
         </template>
         <!-- 평면 -->
         <tbody v-else class="divide-y divide-slate-50">
-          <tr v-for="s in filtered" :key="s.id" class="hover:bg-slate-50/60">
+          <tr v-for="s in paged" :key="s.id" class="hover:bg-slate-50/60">
             <td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" /><div><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span><p class="mt-0.5 text-slate-700">{{ s.productName }} <span class="text-xs text-slate-400">{{ s.spec }}</span></p></div></div></td>
             <td class="hidden px-3 py-2.5 text-xs text-slate-400 md:table-cell">{{ s.pathLabel }}</td>
-              <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><span v-if="s.locationLabel" class="text-slate-500">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">미지정</span><span v-if="s.locationVerifiedAt" class="ml-1 text-emerald-600" title="실사 검증됨">✓</span></td>
+              <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-left ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:ring-brand-300" title="보관위치 이력 보기" @click="openLocation(s)"><span v-if="s.locationLabel" class="text-slate-600">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">위치 미지정</span><span v-if="s.locationVerifiedAt" class="text-emerald-600" title="실사 검증됨">✓</span><svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
             <td class="px-3 py-2.5 text-right font-bold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-800'">{{ s.qty }}</td>
             <td class="hidden px-3 py-2.5 text-right text-slate-400 sm:table-cell">{{ s.safetyStock || '—' }}</td>
             <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span><span v-if="lifeBadge(s)" class="badge ml-1" :class="lifeBadge(s).c">{{ lifeBadge(s).t }}</span></td>
@@ -196,6 +230,41 @@ function resetFilters() {
           </tr>
         </tfoot>
       </table>
+      </div>
+      <Pager v-if="filtered.length && !groupByComplex" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
+
+    <!-- 보관위치 + 변경 이력 -->
+    <BaseModal v-model="locModal" title="보관위치 / 변경 이력" size="md">
+      <div v-if="locSku">
+        <div class="mb-3 rounded-lg bg-slate-50 p-3">
+          <p class="text-sm"><span class="font-mono text-brand-700">{{ locSku.code }}</span> <span class="text-slate-700">{{ locSku.productName }}</span></p>
+          <p class="mt-1 text-sm font-medium text-slate-800">
+            📍 현재: {{ locSku.locationLabel ? (locSku.complexName + ' › ' + locSku.locationLabel) : (locSku.complexName || '위치 미지정') }}
+            <span v-if="locSku.storageLocationCode" class="font-mono text-xs text-slate-400">({{ locSku.storageLocationCode }})</span>
+          </p>
+          <p v-if="locSku.locationVerifiedAt" class="mt-0.5 text-xs text-emerald-600">실사 검증: {{ locSku.locationVerifiedBy }} · {{ fmtDateTime(locSku.locationVerifiedAt) }}</p>
+        </div>
+
+        <p class="mb-1 text-xs font-semibold text-slate-500">변경 이력</p>
+        <div v-if="locLoading" class="py-6 text-center text-sm text-slate-400">불러오는 중…</div>
+        <div v-else-if="!locLogs.length" class="py-6 text-center text-sm text-slate-300">변경 이력이 없습니다.</div>
+        <ul v-else class="divide-y divide-slate-50 text-sm">
+          <li v-for="l in locLogs" :key="l.id" class="py-2">
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-slate-700">
+                {{ l.fromLabel || '미지정' }} <span class="text-slate-300">→</span> {{ l.toLabel || '미지정' }}
+                <span v-if="l.storageLocationCode" class="font-mono text-xs text-slate-400">({{ l.storageLocationCode }})</span>
+              </span>
+              <span class="text-xs text-slate-400">{{ fmtDateTime(l.at) }}</span>
+            </div>
+            <p class="text-xs text-slate-400">변경자: {{ l.byName }}</p>
+          </li>
+        </ul>
+      </div>
+      <template #footer>
+        <button class="btn-primary" @click="locModal = false">닫기</button>
+      </template>
+    </BaseModal>
   </div>
 </template>

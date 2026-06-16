@@ -1,9 +1,11 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { skus, products, complexes } from '@/services/db'
+import { skus, products, complexes, categories, productCodes, productDetails } from '@/services/db'
 import { makeQrBatch } from '@/services/qr'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
+import { usePagination } from '@/composables/usePagination'
+import Pager from '@/components/ui/Pager.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -20,9 +22,34 @@ const loading = ref(true)
 const list = ref([])
 const productList = ref([])
 const complexList = ref([])
+const categoryList = ref([])
+const productCodeList = ref([])
+const productDetailList = ref([])
 const search = ref('')
 const filterComplex = ref('')
+const fColor = ref('')
+const fRelease = ref('')
+const fProduction = ref('')
+const priceMin = ref('')
+const priceMax = ref('')
 const selected = ref(new Set())
+
+// 목록에 존재하는 값들로 셀렉트 옵션 구성
+const distinct = (key) =>
+  [...new Set(list.value.map((s) => s[key]).filter((v) => v !== null && v !== undefined && String(v).trim() !== ''))]
+const colorOptions = computed(() => distinct('color').sort())
+const releaseYearOptions = computed(() => distinct('releaseYear').sort((a, b) => Number(b) - Number(a)))
+const productionYearOptions = computed(() => distinct('productionYear').sort((a, b) => Number(b) - Number(a)))
+
+function resetFilters() {
+  search.value = ''
+  filterComplex.value = ''
+  fColor.value = ''
+  fRelease.value = ''
+  fProduction.value = ''
+  priceMin.value = ''
+  priceMax.value = ''
+}
 
 const printSheet = ref([])
 const printing = ref(false)
@@ -32,11 +59,8 @@ const qrSku = ref(null)
 async function load() {
   loading.value = true
   try {
-    ;[list.value, productList.value, complexList.value] = await Promise.all([
-      skus.list(),
-      products.list(),
-      complexes.list(),
-    ])
+    ;[list.value, productList.value, complexList.value, categoryList.value, productCodeList.value, productDetailList.value] =
+      await Promise.all([skus.list(), products.list(), complexes.list(), categories.list(), productCodes.list(), productDetails.list()])
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))
   } finally {
@@ -48,19 +72,27 @@ onMounted(load)
 const filtered = computed(() =>
   list.value.filter((s) => {
     if (filterComplex.value && s.complexId !== filterComplex.value) return false
+    if (fColor.value && s.color !== fColor.value) return false
+    if (fRelease.value && String(s.releaseYear) !== fRelease.value) return false
+    if (fProduction.value && String(s.productionYear) !== fProduction.value) return false
+    const price = Number(s.price) || 0
+    if (priceMin.value !== '' && price < Number(priceMin.value)) return false
+    if (priceMax.value !== '' && price > Number(priceMax.value)) return false
     if (search.value) {
       const q = search.value.toLowerCase()
-      return [s.code, s.productName, s.spec, s.pathLabel].some((v) => (v || '').toLowerCase().includes(q))
+      return [s.code, s.productName, s.spec, s.purpose, s.pathLabel].some((v) => (v || '').toLowerCase().includes(q))
     }
     return true
   })
 )
+const { paged, page, pageSize, sizes, total, totalPages } = usePagination(filtered)
 
 /* ---- 생성/수정 ---- */
 const modal = ref(false)
 const editing = ref(null)
 const blankForm = () => ({
-  productId: '', code: '', spec: '', color: '', releaseYear: '', productionYear: '', purpose: '',
+  productId: '', code: '', spec: '', dimW: '', dimL: '', dimH: '', dimD: '',
+  color: '', releaseYear: '', productionYear: '', purpose: '', purposeSel: '',
   imageUrl: '', price: 0, qty: 0, safetyStock: 0,
   // 연한관리
   lifecycleEnabled: false, cycleValue: 0, cycleUnit: 'month', lastReplacedAt: '', replaceReason: '', lifecycleNote: '',
@@ -74,18 +106,67 @@ const nextReplacePreview = computed(() => {
 })
 const form = reactive(blankForm())
 
+// 상품 찾기용 연쇄 필터 (단지>카테고리>제품코드>상세코드). 비우면 전체
+const psel = reactive({ complexId: '', categoryId: '', productCodeId: '', productDetailId: '' })
+const pCategoryOptions = computed(() => (psel.complexId ? categoryList.value.filter((c) => c.complexId === psel.complexId) : []))
+const pCodeOptions = computed(() => (psel.categoryId ? productCodeList.value.filter((p) => p.categoryId === psel.categoryId) : []))
+const pDetailOptions = computed(() => (psel.productCodeId ? productDetailList.value.filter((d) => d.productCodeId === psel.productCodeId) : []))
+const filteredProducts = computed(() =>
+  productList.value
+    .filter(
+      (p) =>
+        (!psel.complexId || p.complexId === psel.complexId) &&
+        (!psel.categoryId || p.categoryId === psel.categoryId) &&
+        (!psel.productCodeId || p.productCodeId === psel.productCodeId) &&
+        (!psel.productDetailId || p.productDetailId === psel.productDetailId)
+    )
+    .sort((a, b) => (a.name > b.name ? 1 : -1))
+)
+function onPselComplex() { psel.categoryId = ''; psel.productCodeId = ''; psel.productDetailId = ''; clearInvalidProduct() }
+function onPselCategory() { psel.productCodeId = ''; psel.productDetailId = ''; clearInvalidProduct() }
+function onPselCode() { psel.productDetailId = ''; clearInvalidProduct() }
+function clearInvalidProduct() {
+  if (form.productId && !filteredProducts.value.find((p) => p.id === form.productId)) form.productId = ''
+}
+
 // SKU 구분을 위한 속성: 최소 1개 이상 입력 필요
 function hasAnyAttr() {
   const text = [form.spec, form.color, form.releaseYear, form.productionYear, form.purpose].some(
     (v) => String(v ?? '').trim() !== ''
   )
-  return text || Number(form.price) > 0 || Number(form.qty) > 0 || Number(form.safetyStock) > 0
+  const hasDim = [form.dimW, form.dimL, form.dimH, form.dimD].some((v) => String(v ?? '').trim() !== '')
+  return text || hasDim || Number(form.price) > 0 || Number(form.qty) > 0 || Number(form.safetyStock) > 0
 }
+
+// 구매목적 셀렉트 (기타 시 직접 입력)
+const PURPOSES = ['판매용', '전시용', '내부비치', '소모', '기타']
+function onPurposeSel() {
+  form.purpose = form.purposeSel === '기타' ? '' : form.purposeSel
+}
+
+// 치수 텍스트 (W 가로 / L 세로 / H 높이 / D 깊이, cm)
+function dimText(s) {
+  const p = []
+  if (s.dimW) p.push(`W${s.dimW}`)
+  if (s.dimL) p.push(`L${s.dimL}`)
+  if (s.dimH) p.push(`H${s.dimH}`)
+  if (s.dimD) p.push(`D${s.dimD}`)
+  return p.length ? p.join(' × ') + ' cm' : ''
+}
+
+// 단가 입력 콤마 표시
+const priceDisplay = computed({
+  get: () => (form.price === '' || form.price === null || form.price === undefined ? '' : Number(form.price).toLocaleString()),
+  set: (v) => {
+    form.price = Number(String(v).replace(/[^\d]/g, '')) || 0
+  },
+})
 
 function openCreate() {
   if (!productList.value.length) return toast.error('먼저 상품을 등록하세요.')
   editing.value = null
   Object.assign(form, blankForm())
+  Object.assign(psel, { complexId: '', categoryId: '', productCodeId: '', productDetailId: '' })
   modal.value = true
 }
 function openEdit(s) {
@@ -94,10 +175,15 @@ function openEdit(s) {
     productId: s.productId,
     code: s.code,
     spec: s.spec || '',
+    dimW: s.dimW ?? '',
+    dimL: s.dimL ?? '',
+    dimH: s.dimH ?? '',
+    dimD: s.dimD ?? '',
     color: s.color || '',
     releaseYear: s.releaseYear || '',
     productionYear: s.productionYear || '',
     purpose: s.purpose || '',
+    purposeSel: s.purpose ? (['판매용', '전시용', '내부비치', '소모'].includes(s.purpose) ? s.purpose : '기타') : '',
     imageUrl: s.imageUrl || '',
     price: s.price || 0,
     qty: s.qty || 0,
@@ -138,11 +224,15 @@ async function save() {
     replaceReason: form.replaceReason.trim(),
     lifecycleNote: form.lifecycleNote.trim(),
   }
+  // 치수(cm): 빈값은 null
+  const num = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
+  const dims = { dimW: num(form.dimW), dimL: num(form.dimL), dimH: num(form.dimH), dimD: num(form.dimD) }
   try {
     if (editing.value) {
       // 재고수량은 입출고로만 변경, 코드는 수정 불가 (메타만 수정)
       await skus.update(editing.value.id, {
         spec: form.spec.trim(),
+        ...dims,
         color: form.color.trim(),
         releaseYear: String(form.releaseYear || '').trim(),
         productionYear: String(form.productionYear || '').trim(),
@@ -156,6 +246,7 @@ async function save() {
     } else {
       const r = await skus.create({
         spec: form.spec.trim(),
+        ...dims,
         color: form.color.trim(),
         releaseYear: form.releaseYear,
         productionYear: form.productionYear,
@@ -251,29 +342,56 @@ const statusMeta = {
     </PageHeader>
 
     <div class="no-print mb-3 flex flex-wrap items-center gap-2">
-      <input v-model="search" class="input w-auto flex-1 sm:max-w-xs" placeholder="SKU코드/상품명 검색" />
       <select v-model="filterComplex" class="input w-auto">
         <option value="">전체 단지</option>
         <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
       </select>
+      <select v-model="fColor" class="input w-auto">
+        <option value="">전체 색상</option>
+        <option v-for="c in colorOptions" :key="c" :value="c">{{ c }}</option>
+      </select>
+      <select v-model="fRelease" class="input w-auto">
+        <option value="">출시년도</option>
+        <option v-for="y in releaseYearOptions" :key="y" :value="String(y)">{{ y }}</option>
+      </select>
+      <select v-model="fProduction" class="input w-auto">
+        <option value="">생산년도</option>
+        <option v-for="y in productionYearOptions" :key="y" :value="String(y)">{{ y }}</option>
+      </select>
+      <div class="flex items-center gap-1">
+        <input v-model="priceMin" type="number" min="0" class="input w-24" placeholder="단가 최소" />
+        <span class="text-slate-400">~</span>
+        <input v-model="priceMax" type="number" min="0" class="input w-24" placeholder="최대" />
+      </div>
+      <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명/구매목적 검색" />
+      <button class="btn-ghost btn-sm" @click="resetFilters">초기화</button>
+      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+        <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
+      </select>
     </div>
 
-    <div class="card no-print overflow-hidden">
+    <div class="card no-print">
+      <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
       <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">등록된 SKU가 없습니다.</div>
-      <table v-else class="w-full text-sm">
+      <table v-else class="w-full min-w-[1040px] text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
             <th class="w-10 px-3 py-2.5"><input type="checkbox" class="rounded border-slate-300" :checked="allChecked" @change="toggleAll" /></th>
             <th class="px-3 py-2.5 font-semibold">SKU 코드</th>
-            <th class="px-3 py-2.5 font-semibold">상품 / 속성</th>
+            <th class="px-3 py-2.5 font-semibold">상품</th>
+            <th class="px-3 py-2.5 font-semibold">규격</th>
+            <th class="px-3 py-2.5 font-semibold">색상</th>
+            <th class="px-3 py-2.5 font-semibold">출시</th>
+            <th class="px-3 py-2.5 font-semibold">생산</th>
+            <th class="px-3 py-2.5 text-right font-semibold">단가</th>
             <th class="px-3 py-2.5 font-semibold">재고</th>
             <th class="px-3 py-2.5 font-semibold">상태</th>
             <th class="px-3 py-2.5 text-right font-semibold">관리</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="s in filtered" :key="s.id" class="hover:bg-slate-50/60" :class="selected.has(s.id) ? 'bg-brand-50/40' : ''">
+          <tr v-for="s in paged" :key="s.id" class="hover:bg-slate-50/60" :class="selected.has(s.id) ? 'bg-brand-50/40' : ''">
             <td class="px-3 py-2.5"><input type="checkbox" class="rounded border-slate-300" :checked="selected.has(s.id)" @change="toggle(s.id)" /></td>
             <td class="px-3 py-2.5">
               <span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span>
@@ -284,11 +402,15 @@ const statusMeta = {
                 <img :src="resolveImage(s)" class="h-10 w-10 shrink-0 rounded-lg border border-slate-100 object-cover" alt="" />
                 <div class="min-w-0">
                   <p class="font-medium text-slate-800">{{ s.productName }}</p>
-                  <p class="text-xs text-slate-400">{{ attrLine(s) || '—' }}</p>
                   <p class="truncate text-[11px] text-slate-300">{{ s.pathLabel }}</p>
                 </div>
               </div>
             </td>
+            <td class="px-3 py-2.5 text-xs text-slate-600">{{ dimText(s) || s.spec || '—' }}</td>
+            <td class="px-3 py-2.5 text-slate-600">{{ s.color || '—' }}</td>
+            <td class="px-3 py-2.5 text-slate-500">{{ s.releaseYear || '—' }}</td>
+            <td class="px-3 py-2.5 text-slate-500">{{ s.productionYear || '—' }}</td>
+            <td class="px-3 py-2.5 text-right text-slate-700">{{ Number(s.price).toLocaleString() }}원</td>
             <td class="px-3 py-2.5 font-semibold text-slate-700">{{ s.qty }}개</td>
             <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span></td>
             <td class="px-3 py-2.5 text-right">
@@ -299,6 +421,8 @@ const statusMeta = {
           </tr>
         </tbody>
       </table>
+      </div>
+      <Pager v-if="filtered.length" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
 
     <!-- 인쇄 라벨 시트 -->
@@ -310,6 +434,9 @@ const statusMeta = {
             <p class="font-mono font-bold text-black">{{ item.code }}</p>
             <p class="truncate text-slate-700">{{ item.productName }}</p>
             <p class="text-slate-500">{{ item.spec }}</p>
+            <p v-if="[item.color, item.releaseYear, item.productionYear].some(Boolean)" class="text-slate-600">
+              {{ [item.color, item.releaseYear && '출시 ' + item.releaseYear, item.productionYear && '생산 ' + item.productionYear].filter(Boolean).join(' · ') }}
+            </p>
             <p class="break-words font-semibold text-black">📍 {{ item.locationLabel ? item.complexName + ' > ' + item.locationLabel : (item.complexName || '위치 미지정') }}</p>
             <p class="mt-0.5 break-words text-slate-400">{{ item.pathLabel }}</p>
           </div>
@@ -319,11 +446,30 @@ const statusMeta = {
 
     <BaseModal v-model="modal" :title="editing ? 'SKU 수정' : 'SKU 추가'">
       <div class="space-y-3">
+        <!-- 상품 찾기: 단지>카테고리>제품코드>(상세코드 선택) 로 좁히기 -->
+        <div v-if="!editing" class="grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-2">
+          <select v-model="psel.complexId" class="input text-sm" @change="onPselComplex">
+            <option value="">전체 단지</option>
+            <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+          <select v-model="psel.categoryId" class="input text-sm" :disabled="!psel.complexId" @change="onPselCategory">
+            <option value="">전체 카테고리</option>
+            <option v-for="c in pCategoryOptions" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+          <select v-model="psel.productCodeId" class="input text-sm" :disabled="!psel.categoryId" @change="onPselCode">
+            <option value="">전체 제품코드</option>
+            <option v-for="p in pCodeOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+          <select v-model="psel.productDetailId" class="input text-sm" :disabled="!psel.productCodeId" @change="clearInvalidProduct">
+            <option value="">전체 상세코드(선택)</option>
+            <option v-for="d in pDetailOptions" :key="d.id" :value="d.id">{{ d.name }}</option>
+          </select>
+        </div>
         <div>
-          <label class="label">상품 *</label>
+          <label class="label">상품 * <span class="text-slate-400">({{ filteredProducts.length }}건)</span></label>
           <select v-model="form.productId" class="input" :disabled="!!editing">
             <option value="">상품 선택</option>
-            <option v-for="p in productList" :key="p.id" :value="p.id">{{ p.name }} ({{ p.pathLabel || p.complexName }})</option>
+            <option v-for="p in (editing ? productList : filteredProducts)" :key="p.id" :value="p.id">{{ p.name }} ({{ p.code }} · {{ p.pathLabel || p.complexName }})</option>
           </select>
         </div>
         <div>
@@ -336,11 +482,16 @@ const statusMeta = {
         <p class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
           아래 SKU 구분 속성(규격·색상·출시년도·생산년도·구매목적·단가·재고·안전재고) 중 <b>최소 1개</b>는 입력해야 저장됩니다.
         </p>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="label">규격</label>
-            <input v-model="form.spec" class="input" placeholder="예: 10롤" />
+        <div>
+          <label class="label">규격 (cm · 선택)</label>
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div class="flex items-center gap-1"><span class="shrink-0 text-xs text-slate-500">가로</span><input v-model="form.dimW" type="number" min="0" step="0.1" class="input px-2" /><span class="text-xs text-slate-400">cm</span></div>
+            <div class="flex items-center gap-1"><span class="shrink-0 text-xs text-slate-500">세로</span><input v-model="form.dimL" type="number" min="0" step="0.1" class="input px-2" /><span class="text-xs text-slate-400">cm</span></div>
+            <div class="flex items-center gap-1"><span class="shrink-0 text-xs text-slate-500">높이</span><input v-model="form.dimH" type="number" min="0" step="0.1" class="input px-2" /><span class="text-xs text-slate-400">cm</span></div>
+            <div class="flex items-center gap-1"><span class="shrink-0 text-xs text-slate-500">깊이</span><input v-model="form.dimD" type="number" min="0" step="0.1" class="input px-2" /><span class="text-xs text-slate-400">cm</span></div>
           </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="label">색상</label>
             <input v-model="form.color" class="input" placeholder="예: 화이트" />
@@ -353,13 +504,20 @@ const statusMeta = {
             <label class="label">생산년도</label>
             <input v-model="form.productionYear" type="number" min="1900" max="2999" class="input" placeholder="예: 2024" />
           </div>
-          <div class="col-span-2">
+          <div>
             <label class="label">구매목적</label>
-            <input v-model="form.purpose" class="input" placeholder="예: 전시용 / 판매용 / 내부비치" />
+            <select v-model="form.purposeSel" class="input" @change="onPurposeSel">
+              <option value="">선택</option>
+              <option v-for="p in PURPOSES" :key="p" :value="p">{{ p }}</option>
+            </select>
+          </div>
+          <div v-if="form.purposeSel === '기타'" class="col-span-2">
+            <label class="label">구매목적 직접 입력</label>
+            <input v-model="form.purpose" class="input" placeholder="구매목적을 입력하세요" />
           </div>
           <div>
             <label class="label">단가(원)</label>
-            <input v-model.number="form.price" type="number" min="0" class="input" />
+            <input v-model="priceDisplay" inputmode="numeric" class="input" placeholder="0" />
           </div>
           <div>
             <label class="label">안전재고</label>

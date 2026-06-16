@@ -1,11 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 
 // 환경변수(.env): Supabase 프로젝트 설정 > API
-const url = import.meta.env.VITE_SUPABASE_URL
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const url = (import.meta.env.VITE_SUPABASE_URL || '').trim()
+const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim()
 
 if (!url || !anonKey) {
   console.warn('[Supabase] .env 설정이 비어 있습니다. VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY 를 채워주세요.')
+}
+// 키에 비ASCII(한글 placeholder 등)가 남아 있으면 헤더 오류가 나므로 미리 경고
+if (anonKey && /[^\x00-\x7F]/.test(anonKey)) {
+  console.error('[Supabase] anon key 에 한글 등 비ASCII 문자가 있습니다. .env 의 VITE_SUPABASE_ANON_KEY 를 실제 키로 교체하세요.')
 }
 
 export const supabase = createClient(url || 'http://localhost', anonKey || 'anon', {

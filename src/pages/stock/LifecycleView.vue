@@ -7,6 +7,8 @@ import { useBusy } from '@/composables/useBusy'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime, CYCLE_UNITS } from '@/utils/date'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
+import Pager from '@/components/ui/Pager.vue'
+import { usePagination } from '@/composables/usePagination'
 import { resolveImage } from '@/utils/image'
 
 const auth = useAuthStore()
@@ -64,6 +66,7 @@ const filtered = computed(() =>
     })
     .sort((a, b) => (a._d ?? 1e9) - (b._d ?? 1e9))
 )
+const { paged, page, pageSize, sizes, total, totalPages } = usePagination(filtered)
 const stats = computed(() => ({
   total: decorated.value.length,
   soon: decorated.value.filter((s) => s._st === 'soon').length,
@@ -124,12 +127,16 @@ async function openHistory(s) {
     </div>
 
     <div class="mb-3 flex flex-wrap items-center gap-2">
-      <input v-model="search" class="input w-auto flex-1 sm:max-w-xs" placeholder="SKU코드/상품명/사유 검색" />
       <select v-model="fComplex" class="input w-auto"><option value="">전체 단지</option><option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option></select>
       <select v-model="fStatus" class="input w-auto"><option v-for="s in STATUS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+      <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명/사유 검색" />
+      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+        <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
+      </select>
     </div>
 
-    <div class="card overflow-x-auto scrollbar-slim">
+    <div class="card">
+      <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
       <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">연한관리 대상 SKU가 없습니다. (SKU관리에서 "연한관리 사용"을 켜세요)</div>
       <table v-else class="w-full min-w-[860px] text-sm">
@@ -145,7 +152,7 @@ async function openHistory(s) {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="s in filtered" :key="s.id" class="hover:bg-slate-50/60" :class="s._st === 'over' ? 'bg-rose-50/40' : s._st === 'soon' ? 'bg-amber-50/30' : ''">
+          <tr v-for="s in paged" :key="s.id" class="hover:bg-slate-50/60" :class="s._st === 'over' ? 'bg-rose-50/40' : s._st === 'soon' ? 'bg-amber-50/30' : ''">
             <td class="px-3 py-2">
               <div class="flex items-center gap-2.5">
                 <img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" />
@@ -171,6 +178,8 @@ async function openHistory(s) {
           </tr>
         </tbody>
       </table>
+      </div>
+      <Pager v-if="filtered.length" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
 
     <!-- 교체 처리 모달 -->

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { skus, complexes, categories, applyAuditBatch } from '@/services/db'
+import { skus, complexes, categories, productCodes, productDetails, applyAuditBatch } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -16,10 +16,14 @@ const working = ref(false)
 const list = ref([])
 const complexList = ref([])
 const categoryList = ref([])
+const productCodeList = ref([])
+const productDetailList = ref([])
 const counts = reactive({}) // skuId -> 실사수량
 
 const fComplex = ref('')
 const fCategory = ref('')
+const fProductCode = ref('')
+const fProductDetail = ref('')
 const search = ref('')
 const onlyDiff = ref(false)
 const memo = ref('')
@@ -27,10 +31,12 @@ const memo = ref('')
 async function load() {
   loading.value = true
   try {
-    ;[list.value, complexList.value, categoryList.value] = await Promise.all([
+    ;[list.value, complexList.value, categoryList.value, productCodeList.value, productDetailList.value] = await Promise.all([
       skus.list(),
       complexes.list(),
       categories.list(),
+      productCodes.list(),
+      productDetails.list(),
     ])
     Object.keys(counts).forEach((k) => delete counts[k])
     list.value.forEach((s) => (counts[s.id] = s.qty))
@@ -43,7 +49,11 @@ async function load() {
 onMounted(load)
 
 const categoryOptions = computed(() => (fComplex.value ? categoryList.value.filter((c) => c.complexId === fComplex.value) : categoryList.value))
-watch(fComplex, () => (fCategory.value = ''))
+const pcOptions = computed(() => (fCategory.value ? productCodeList.value.filter((p) => p.categoryId === fCategory.value) : productCodeList.value))
+const pdOptions = computed(() => (fProductCode.value ? productDetailList.value.filter((d) => d.productCodeId === fProductCode.value) : productDetailList.value))
+watch(fComplex, () => { fCategory.value = ''; fProductCode.value = ''; fProductDetail.value = '' })
+watch(fCategory, () => { fProductCode.value = ''; fProductDetail.value = '' })
+watch(fProductCode, () => { fProductDetail.value = '' })
 
 function diffOf(s) {
   const c = counts[s.id]
@@ -55,6 +65,8 @@ const filtered = computed(() =>
   list.value.filter((s) => {
     if (fComplex.value && s.complexId !== fComplex.value) return false
     if (fCategory.value && s.categoryId !== fCategory.value) return false
+    if (fProductCode.value && s.productCodeId !== fProductCode.value) return false
+    if (fProductDetail.value && s.productDetailId !== fProductDetail.value) return false
     if (onlyDiff.value && diffOf(s) === 0) return false
     if (search.value) {
       const q = search.value.toLowerCase()
@@ -147,11 +159,13 @@ async function confirmAudit() {
 
     <!-- 필터 -->
     <div class="mb-3 flex flex-wrap items-center gap-2">
-      <input v-model="search" class="input w-auto flex-1 sm:max-w-xs" placeholder="SKU코드/상품명 검색" />
       <select v-model="fComplex" class="input w-auto"><option value="">전체 단지</option><option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option></select>
       <select v-model="fCategory" class="input w-auto"><option value="">전체 카테고리</option><option v-for="c in categoryOptions" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+      <select v-model="fProductCode" class="input w-auto"><option value="">전체 제품코드</option><option v-for="p in pcOptions" :key="p.id" :value="p.id">{{ p.name }}</option></select>
+      <select v-model="fProductDetail" class="input w-auto"><option value="">전체 상세코드</option><option v-for="d in pdOptions" :key="d.id" :value="d.id">{{ d.name }}</option></select>
+      <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명 검색" />
       <label class="flex items-center gap-1.5 text-sm text-slate-500"><input v-model="onlyDiff" type="checkbox" class="rounded border-slate-300" /> 차이만</label>
-      <input v-model="memo" class="input w-auto flex-1 sm:max-w-[200px]" placeholder="실사 메모 (예: 2026-06 정기실사)" />
+      <input v-model="memo" class="input w-auto sm:max-w-[200px]" placeholder="실사 메모 (예: 2026-06 정기실사)" />
     </div>
 
     <div class="card overflow-x-auto scrollbar-slim">

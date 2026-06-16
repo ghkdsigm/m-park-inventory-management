@@ -33,6 +33,7 @@ const allNav = computed(() => [
   { name: 'status', label: '재고현황', icon: 'status', to: { name: 'status' }, group: '재고관리' },
 
   { name: 'users', label: '사용자관리', icon: 'users', to: { name: 'users' }, group: '설정', admin: true },
+  { name: 'audit-log', label: '감사로그', icon: 'shield', to: { name: 'audit-log' }, group: '설정', admin: true },
 ])
 
 const nav = computed(() => allNav.value.filter((i) => !i.admin || auth.isAdmin))
@@ -67,6 +68,7 @@ const icons = {
   history: 'M3 3v5h5M3.05 13a9 9 0 102.6-6.36L3 8M12 7v5l4 2',
   pin: 'M12 21s7-5.686 7-11a7 7 0 10-14 0c0 5.314 7 11 7 11zM12 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
   cycle: 'M3 12a9 9 0 0115.5-6.3L21 8M21 3v5h-5M21 12a9 9 0 01-15.5 6.3L3 16M3 21v-5h5',
+  shield: 'M12 3l8 3v6c0 4.5-3 7.5-8 9-5-1.5-8-4.5-8-9V6l8-3zM9.5 12l2 2 3.5-4',
   users: 'M16 11a3 3 0 100-6 3 3 0 000 6zM8 11a3 3 0 100-6 3 3 0 000 6zM2 20v-1a4 4 0 014-4h4a4 4 0 014 4v1M16 14h2a4 4 0 014 4v1',
   menu: 'M4 6h16M4 12h16M4 18h16',
 }

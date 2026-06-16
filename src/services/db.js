@@ -189,18 +189,19 @@ export const skus = {
   async remove(id) {
     unwrap(await supabase.from('skus').delete().eq('id', id))
   },
-  /** 보관위치 설정/삭제 (재고조정, admin) */
+  /** 보관위치 설정/삭제 (재고조정, admin) — RPC: 변경 시 이력 자동 기록 */
   setLocation(skuId, loc) {
-    const payload = {
-      storageLocationId: loc.storageLocationId || null,
-      storageLocationCode: loc.storageLocationCode || '',
-      zoneId: loc.zoneId || null,
-      zoneName: loc.zoneName || '',
-      subZoneId: loc.subZoneId || null,
-      subZoneName: loc.subZoneName || '',
-      locationLabel: loc.locationLabel || '',
-    }
-    return supabase.from('skus').update(objToSnake(payload)).eq('id', skuId)
+    return supabase
+      .rpc('set_location', {
+        p_sku_id: skuId,
+        p_storage_location_id: loc.storageLocationId || null,
+        p_storage_location_code: loc.storageLocationCode || '',
+        p_zone_id: loc.zoneId || null,
+        p_zone_name: loc.zoneName || '',
+        p_sub_zone_id: loc.subZoneId || null,
+        p_sub_zone_name: loc.subZoneName || '',
+        p_location_label: loc.locationLabel || '',
+      })
       .then(unwrap)
   },
   /** 위치 검증 (재고실사, admin) */
@@ -251,6 +252,13 @@ export async function replaceLifecycle(skuId, _actor, reason = '') {
   const data = unwrap(await supabase.rpc('replace_lifecycle', { p_sku_id: skuId, p_reason: reason || '' }))
   return data // { replacedAt, nextReplaceAt }
 }
+/** 보관위치 변경 이력 */
+export async function listLocationLogs(skuId, max = 50) {
+  return rowsToCamel(
+    unwrap(await supabase.from('location_logs').select('*').eq('sku_id', skuId).order('at', { ascending: false }).limit(max))
+  )
+}
+
 export async function listLifecycleLogs(skuId, max = 50) {
   return rowsToCamel(
     unwrap(await supabase.from('lifecycle_logs').select('*').eq('sku_id', skuId).order('at', { ascending: false }).limit(max))
@@ -265,6 +273,30 @@ export async function getTodayStats() {
   const { data, error } = await supabase.from('daily_stats').select('*').eq('date', dateKeyLocal()).maybeSingle()
   if (error) throw error
   return data ? rowToCamel(data) : null
+}
+
+/* ===================== 감사로그 ===================== */
+/** 하루 단위 조회 (date='YYYY-MM-DD'). module/byUserId 선택 필터 */
+export async function listAuditLogs({ date, module, byUserId } = {}, max = 500) {
+  let q = supabase.from('audit_logs').select('*').order('at', { ascending: false }).limit(max)
+  if (date) {
+    const start = new Date(date + 'T00:00:00')
+    const end = new Date(start)
+    end.setDate(end.getDate() + 1)
+    q = q.gte('at', start.toISOString()).lt('at', end.toISOString())
+  }
+  if (module) q = q.eq('module', module)
+  if (byUserId) q = q.eq('by_user_id', byUserId)
+  return rowsToCamel(unwrap(await q))
+}
+export async function auditTopUsers(limit = 10) {
+  return rowsToCamel(unwrap(await supabase.rpc('audit_top_users', { p_limit: limit })) || [])
+}
+export async function topProductsBySku(limit = 10) {
+  return rowsToCamel(unwrap(await supabase.rpc('top_products_by_sku', { p_limit: limit })) || [])
+}
+export async function topChangedSkus(limit = 10) {
+  return rowsToCamel(unwrap(await supabase.rpc('top_changed_skus', { p_limit: limit })) || [])
 }
 
 /* =============================== 사용자/역할 =============================== */
