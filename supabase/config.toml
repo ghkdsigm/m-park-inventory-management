@@ -1,0 +1,38 @@
+# Supabase 로컬(Docker) 설정. `supabase start` 로 전체 스택이 Docker 로 뜹니다.
+project_id = "m-park-inventory"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5175"
+additional_redirect_urls = ["http://localhost:5175", "http://localhost:8080"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+# 로컬/사내용: 이메일 확인 없이 바로 로그인 (운영에선 정책에 맞게 조정)
+enable_confirmations = false

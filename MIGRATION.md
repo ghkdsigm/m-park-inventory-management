@@ -1,8 +1,10 @@
-# 마이그레이션 & 아키텍처 가이드 (Firebase → NestJS + PostgreSQL + EC2)
+# 마이그레이션 & 아키텍처 가이드
 
-> 이 시스템은 **나중에 NestJS + PostgreSQL + EC2(+S3)** 로 전환할 가능성이 높습니다.
-> 그래서 처음부터 **백엔드 교체가 쉬운 구조**로 설계했습니다.
-> **앞으로 모든 기능 작업은 이 문서의 "코딩 규칙"을 지켜서** 마이그레이션 비용을 낮게 유지하세요.
+> ✅ **v2.0: Firebase → Supabase(PostgreSQL) 이전 완료.**
+> 실제 스키마/보안/함수는 **`supabase/migrations/`** 에 있습니다(이 문서의 DDL은 설계 참고용).
+> 백엔드 접근은 여전히 `src/services/db.js`·`storage.js`·`stores/auth.js` 3곳에만 격리돼 있습니다 —
+> 새 기능도 이 규칙(컴포넌트에서 supabase 직접 import 금지, 비즈니스 로직은 서비스/DB 함수)을 지키세요.
+> 아래는 원래의 "Firebase→PG 설계 문서"로, Supabase 적용 시 그대로 반영되었습니다.
 
 ---
 

@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import { resolveImage } from '@/utils/image'
+import { fmtDateTime } from '@/utils/date'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -184,11 +185,7 @@ async function submit() {
 }
 
 const typeLabel = { in: '입고', out: '출고', adjust: '조정', audit: '실사' }
-function fmtTime(ts) {
-  if (!ts?.toDate) return ''
-  const d = ts.toDate()
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+const fmtTime = fmtDateTime
 </script>
 
 <template>

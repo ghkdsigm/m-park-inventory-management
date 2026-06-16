@@ -1,0 +1,12 @@
+# 프론트엔드 컨테이너. (백엔드/DB 는 Supabase: 클라우드 또는 `supabase start` 로컬 스택)
+# .env 의 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY 를 빌드 시 주입합니다.
+services:
+  web:
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    ports:
+      - "8080:80"
+    restart: unless-stopped

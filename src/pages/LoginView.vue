@@ -15,14 +15,16 @@ const password = ref('')
 const displayName = ref('')
 const loading = ref(false)
 
-const errorMap = {
-  'auth/invalid-credential': '이메일 또는 비밀번호가 올바르지 않습니다.',
-  'auth/invalid-email': '이메일 형식이 올바르지 않습니다.',
-  'auth/user-not-found': '등록되지 않은 이메일입니다.',
-  'auth/wrong-password': '비밀번호가 올바르지 않습니다.',
-  'auth/email-already-in-use': '이미 사용 중인 이메일입니다.',
-  'auth/weak-password': '비밀번호는 6자 이상이어야 합니다.',
-  'auth/too-many-requests': '잠시 후 다시 시도해주세요.',
+// Supabase 인증 에러 메시지(영문) → 한글 매핑
+function krError(e) {
+  const m = (e?.message || '').toLowerCase()
+  if (m.includes('invalid login')) return '이메일 또는 비밀번호가 올바르지 않습니다.'
+  if (m.includes('already registered') || m.includes('already been registered')) return '이미 사용 중인 이메일입니다.'
+  if (m.includes('password should be')) return '비밀번호는 6자 이상이어야 합니다.'
+  if (m.includes('email') && m.includes('invalid')) return '이메일 형식이 올바르지 않습니다.'
+  if (m.includes('not confirmed') || m.includes('confirm')) return '이메일 인증이 필요합니다. (관리자: Supabase에서 이메일 확인 비활성화 권장)'
+  if (m.includes('rate limit') || m.includes('too many')) return '잠시 후 다시 시도해주세요.'
+  return '오류가 발생했습니다. (' + (e?.message || '') + ')'
 }
 
 async function submit() {
@@ -41,7 +43,7 @@ async function submit() {
     const redirect = route.query.redirect || '/'
     router.replace(redirect)
   } catch (e) {
-    toast.error(errorMap[e.code] || '오류가 발생했습니다. (' + (e.code || e.message) + ')')
+    toast.error(krError(e))
   } finally {
     loading.value = false
   }

@@ -1,11 +1,11 @@
-import { storage } from '@/firebase'
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
+import { supabase } from '@/supabase'
 
 /**
- * 이미지 업로드/삭제 (Firebase Storage).
- * - 업로드 전에 클라이언트에서 리사이즈/압축 → 저장공간·전송량 절약
- * - 반환 URL 을 Firestore 문서에 저장해 사용
+ * 이미지 업로드/삭제 (Supabase Storage, 버킷: images).
+ * - 업로드 전 클라이언트에서 리사이즈/압축
+ * - 공개 URL 을 Firestore 대신 PostgreSQL 컬럼에 저장
  */
+const BUCKET = 'images'
 
 function loadImage(file) {
   return new Promise((resolve, reject) => {
@@ -30,9 +30,8 @@ async function compress(file, max = 1024, quality = 0.82) {
 }
 
 /**
- * 이미지 업로드.
  * @param {File} file
- * @param {string} prefix  저장 경로 접두(예: 'products', 'skus')
+ * @param {string} prefix 저장 경로 접두(예: 'products', 'skus')
  * @returns {{url:string, path:string}}
  */
 export async function uploadImage(file, prefix = 'images') {
@@ -40,18 +39,30 @@ export async function uploadImage(file, prefix = 'images') {
   const blob = await compress(file)
   const name = `${Date.now()}-${Math.round(Math.random() * 1e6)}.jpg`
   const path = `${prefix}/${name}`
-  const ref = storageRef(storage, path)
-  await uploadBytes(ref, blob, { contentType: 'image/jpeg' })
-  const url = await getDownloadURL(ref)
-  return { url, path }
+  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
+    contentType: 'image/jpeg',
+    upsert: false,
+  })
+  if (error) throw error
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
+  return { url: data.publicUrl, path }
 }
 
-/** URL(다운로드 URL)로 Storage 객체 삭제. 실패해도 무시(고아 파일 허용) */
+/** 공개 URL 에서 버킷 내 경로 추출 */
+function pathFromUrl(url) {
+  const marker = `/storage/v1/object/public/${BUCKET}/`
+  const i = url.indexOf(marker)
+  return i === -1 ? null : url.slice(i + marker.length)
+}
+
+/** URL 로 Storage 객체 삭제. 실패해도 무시 */
 export async function deleteImageByUrl(url) {
   if (!url) return
+  const path = pathFromUrl(url)
+  if (!path) return
   try {
-    await deleteObject(storageRef(storage, url))
+    await supabase.storage.from(BUCKET).remove([path])
   } catch (e) {
-    // 이미 없거나 권한 등 - 무시
+    // 무시
   }
 }

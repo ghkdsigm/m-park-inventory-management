@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { resolveImage } from '@/utils/image'
-import { lifecycleStatus, daysUntil, fmtDate } from '@/utils/date'
+import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
 
 const route = useRoute()
 const router = useRouter()
@@ -117,11 +117,7 @@ async function run(type, value, label) {
   }
 }
 
-function fmtTime(ts) {
-  if (!ts?.toDate) return ''
-  const d = ts.toDate()
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+const fmtTime = fmtDateTime
 </script>
 
 <template>

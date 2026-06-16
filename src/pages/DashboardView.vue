@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { complexes, products, skus, recentMovements, getTodayStats } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
-import { lifecycleStatus, daysUntil, fmtDate } from '@/utils/date'
+import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
 import PageHeader from '@/components/ui/PageHeader.vue'
 
 const router = useRouter()
@@ -64,11 +64,7 @@ const cards = computed(() => [
   { label: '품절', value: stat.value.out, icon: '⛔', to: { name: 'status' }, warn: stat.value.out > 0 },
 ])
 
-function fmtTime(ts) {
-  if (!ts?.toDate) return ''
-  const d = ts.toDate()
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+const fmtTime = fmtDateTime
 </script>
 
 <template>

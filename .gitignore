@@ -17,7 +17,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# firebase
-.firebase
-firebase-debug.log
-.firebaserc
+# supabase (로컬 스택 임시파일)
+supabase/.branches
+supabase/.temp

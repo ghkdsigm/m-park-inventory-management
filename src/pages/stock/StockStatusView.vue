@@ -4,7 +4,7 @@ import { skus, complexes, categories, productCodes } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import { resolveImage } from '@/utils/image'
-import { lifecycleStatus } from '@/utils/date'
+import { lifecycleStatus, toJsDate } from '@/utils/date'
 
 function lifeBadge(s) {
   if (!s.lifecycleEnabled) return null
@@ -80,7 +80,7 @@ const filtered = computed(() => {
     return true
   })
   const cmp = {
-    recent: (a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0),
+    recent: (a, b) => (toJsDate(b.createdAt)?.getTime() || 0) - (toJsDate(a.createdAt)?.getTime() || 0),
     qtyDesc: (a, b) => b.qty - a.qty,
     qtyAsc: (a, b) => a.qty - b.qty,
     outDesc: (a, b) => (b.totalOut || 0) - (a.totalOut || 0),

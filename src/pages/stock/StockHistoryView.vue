@@ -4,6 +4,7 @@ import { recentMovements, complexes } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
+import { toJsDate } from '@/utils/date'
 
 const toast = useToast()
 const loading = ref(true)
@@ -62,8 +63,8 @@ const filtered = computed(() =>
 )
 
 function fmt(ts) {
-  if (!ts?.toDate) return ''
-  const d = ts.toDate()
+  const d = toJsDate(ts)
+  if (!d) return ''
   const p = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
