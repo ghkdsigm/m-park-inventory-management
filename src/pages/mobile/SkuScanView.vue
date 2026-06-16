@@ -7,6 +7,7 @@ import { useToast } from '@/composables/useToast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { resolveImage } from '@/utils/image'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
+import { specText } from '@/utils/sku'
 
 const route = useRoute()
 const router = useRouter()
@@ -47,7 +48,7 @@ const attrLine = computed(() => {
   const s = sku.value
   if (!s) return ''
   const a = []
-  if (s.spec) a.push(s.spec)
+  if (specText(s)) a.push(specText(s))
   if (s.color) a.push(s.color)
   if (s.releaseYear) a.push(`출시 ${s.releaseYear}`)
   if (s.productionYear) a.push(`생산 ${s.productionYear}`)

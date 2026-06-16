@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { complexes, products, skus, recentMovements, getTodayStats, auditTopUsers, topProductsBySku, topChangedSkus } from '@/services/db'
+import { skus, recentMovements, getTodayStats, auditTopUsers, topProductsBySku, topChangedSkus } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -24,35 +24,24 @@ const typeColor = { in: 'bg-emerald-500', out: 'bg-sky-500', adjust: 'bg-amber-5
 
 onMounted(async () => {
   try {
-    const [cx, ps, sk, mv, ts] = await Promise.all([
-      complexes.list(),
-      products.list(),
-      skus.list(),
+    const [sum, mv, ts] = await Promise.all([
+      skus.dashboardSummary(),
       recentMovements(8),
       getTodayStats(),
     ])
     today.value = ts
     stat.value = {
-      complexes: cx.length,
-      products: ps.length,
-      skus: sk.length,
-      totalQty: sk.reduce((a, s) => a + (Number(s.qty) || 0), 0),
-      low: sk.filter((s) => s.status === 'low').length,
-      out: sk.filter((s) => s.status === 'out').length,
+      complexes: sum.complexCount,
+      products: sum.productCount,
+      skus: sum.skuCount,
+      totalQty: sum.totalQty,
+      low: sum.lowCount,
+      out: sum.outCount,
     }
-    lowList.value = sk.filter((s) => s.status === 'low' || s.status === 'out').slice(0, 6)
+    lowList.value = sum.lowList
     moves.value = mv
-    const life = sk
-      .filter((s) => s.lifecycleEnabled)
-      .map((s) => ({ ...s, _st: lifecycleStatus(s.nextReplaceAt), _d: daysUntil(s.nextReplaceAt) }))
-    lifeStat.value = {
-      soon: life.filter((s) => s._st === 'soon').length,
-      over: life.filter((s) => s._st === 'over').length,
-    }
-    lifeList.value = life
-      .filter((s) => s._st === 'soon' || s._st === 'over')
-      .sort((a, b) => (a._d ?? 1e9) - (b._d ?? 1e9))
-      .slice(0, 6)
+    lifeStat.value = { soon: sum.lifeSoon, over: sum.lifeOver }
+    lifeList.value = sum.lifeList.map((s) => ({ ...s, _st: lifecycleStatus(s.nextReplaceAt), _d: daysUntil(s.nextReplaceAt) }))
 
     // 관리자 통계 (admin 전용)
     if (auth.isAdmin) {

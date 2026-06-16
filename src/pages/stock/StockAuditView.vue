@@ -5,7 +5,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import Pager from '@/components/ui/Pager.vue'
 import { resolveImage } from '@/utils/image'
+import { specText } from '@/utils/sku'
 
 const auth = useAuthStore()
 const toast = useToast()
@@ -13,12 +15,15 @@ const confirm = ref(null)
 
 const loading = ref(true)
 const working = ref(false)
-const list = ref([])
+const rows = ref([]) // 현재 페이지
 const complexList = ref([])
 const categoryList = ref([])
 const productCodeList = ref([])
 const productDetailList = ref([])
+// 페이지를 넘나들며 입력값/시스템값을 누적 보존
 const counts = reactive({}) // skuId -> 실사수량
+const sysQty = reactive({}) // skuId -> 시스템 재고(스냅샷)
+const skuMeta = reactive({}) // skuId -> { code }
 
 const fComplex = ref('')
 const fCategory = ref('')
@@ -28,25 +33,61 @@ const search = ref('')
 const onlyDiff = ref(false)
 const memo = ref('')
 
-async function load() {
+// 서버 페이징
+const sizes = [10, 30, 50]
+const page = ref(1)
+const pageSize = ref(30)
+const total = ref(0)
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+
+async function fetchPage() {
   loading.value = true
   try {
-    ;[list.value, complexList.value, categoryList.value, productCodeList.value, productDetailList.value] = await Promise.all([
-      skus.list(),
-      complexes.list(),
-      categories.list(),
-      productCodes.list(),
-      productDetails.list(),
-    ])
-    Object.keys(counts).forEach((k) => delete counts[k])
-    list.value.forEach((s) => (counts[s.id] = s.qty))
+    const r = await skus.page({
+      complexId: fComplex.value,
+      categoryId: fCategory.value,
+      productCodeId: fProductCode.value,
+      productDetailId: fProductDetail.value,
+      search: search.value.trim(),
+      page: page.value,
+      pageSize: pageSize.value,
+    })
+    rows.value = r.rows
+    total.value = r.total
+    // 시스템값/메타 스냅샷 + 미입력 항목은 시스템값으로 초기화(입력값은 보존)
+    r.rows.forEach((s) => {
+      sysQty[s.id] = s.qty
+      skuMeta[s.id] = { code: s.code }
+      if (!(s.id in counts)) counts[s.id] = s.qty
+    })
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))
   } finally {
     loading.value = false
   }
 }
-onMounted(load)
+async function loadMasters() {
+  try {
+    ;[complexList.value, categoryList.value, productCodeList.value, productDetailList.value] = await Promise.all([
+      complexes.list(),
+      categories.list(),
+      productCodes.list(),
+      productDetails.list(),
+    ])
+  } catch (e) {
+    /* 옵션 로드 실패 무시 */
+  }
+}
+function clearCounts() {
+  Object.keys(counts).forEach((k) => delete counts[k])
+}
+onMounted(async () => { await loadMasters(); await fetchPage() })
+
+watch([fComplex, fCategory, fProductCode, fProductDetail], () => { page.value = 1; fetchPage() })
+watch(pageSize, () => { page.value = 1; fetchPage() })
+watch(page, fetchPage)
+let searchTimer = null
+watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; fetchPage() }, 350) })
 
 const categoryOptions = computed(() => (fComplex.value ? categoryList.value.filter((c) => c.complexId === fComplex.value) : categoryList.value))
 const pcOptions = computed(() => (fCategory.value ? productCodeList.value.filter((p) => p.categoryId === fCategory.value) : productCodeList.value))
@@ -61,31 +102,23 @@ function diffOf(s) {
   return Number(c) - Number(s.qty)
 }
 
-const filtered = computed(() =>
-  list.value.filter((s) => {
-    if (fComplex.value && s.complexId !== fComplex.value) return false
-    if (fCategory.value && s.categoryId !== fCategory.value) return false
-    if (fProductCode.value && s.productCodeId !== fProductCode.value) return false
-    if (fProductDetail.value && s.productDetailId !== fProductDetail.value) return false
-    if (onlyDiff.value && diffOf(s) === 0) return false
-    if (search.value) {
-      const q = search.value.toLowerCase()
-      return [s.code, s.productName, s.spec].some((v) => (v || '').toLowerCase().includes(q))
-    }
-    return true
-  })
-)
+// 현재 페이지 표시 행 ('차이만'은 현재 페이지 내에서 적용)
+const displayRows = computed(() => (onlyDiff.value ? rows.value.filter((s) => diffOf(s) !== 0) : rows.value))
 
+// 차이 발생 항목은 페이지 누적(counts/sysQty 맵 기준)
 const changed = computed(() =>
-  list.value.filter((s) => {
-    const c = counts[s.id]
-    return c !== '' && c != null && Number(c) !== Number(s.qty)
-  })
+  Object.keys(counts)
+    .filter((id) => {
+      const c = counts[id]
+      const sys = sysQty[id]
+      return c !== '' && c != null && sys != null && Number(c) !== Number(sys)
+    })
+    .map((id) => ({ id, code: skuMeta[id]?.code || id, counted: Number(counts[id]), diff: Number(counts[id]) - Number(sysQty[id]) }))
 )
-const diffSum = computed(() => changed.value.reduce((a, s) => a + diffOf(s), 0))
+const diffSum = computed(() => changed.value.reduce((a, x) => a + x.diff, 0))
 
 function attrLine(s) {
-  return [s.spec, s.color, s.releaseYear && `출시 ${s.releaseYear}`, s.purpose].filter(Boolean).join(' · ')
+  return [specText(s), s.color, s.releaseYear && `출시 ${s.releaseYear}`, s.purpose].filter(Boolean).join(' · ')
 }
 
 // 위치 검증 선택
@@ -102,7 +135,7 @@ async function verifyLocations() {
     for (const id of ids) await skus.verifyLocation(id, auth.actor)
     toast.success(`위치 ${ids.length}건 검증 확정`)
     locSel.value = new Set()
-    await load()
+    await fetchPage()
   } catch (e) {
     toast.error('위치 검증 실패: ' + (e.message || e.code))
   } finally {
@@ -110,14 +143,15 @@ async function verifyLocations() {
   }
 }
 function resetCounts() {
-  list.value.forEach((s) => (counts[s.id] = s.qty))
+  clearCounts()
+  rows.value.forEach((s) => (counts[s.id] = s.qty))
   toast.info('실사수량을 시스템 재고로 초기화했습니다.')
 }
 
 async function confirmAudit() {
   if (!changed.value.length) return toast.error('차이가 있는 항목이 없습니다.')
-  for (const s of changed.value) {
-    if (Number(counts[s.id]) < 0) return toast.error(`실사수량은 0 이상이어야 합니다. (${s.code})`)
+  for (const x of changed.value) {
+    if (x.counted < 0) return toast.error(`실사수량은 0 이상이어야 합니다. (${x.code})`)
   }
   const ok = await confirm.value.ask({
     title: '재고실사 확정',
@@ -127,10 +161,11 @@ async function confirmAudit() {
   if (!ok) return
   working.value = true
   try {
-    const items = changed.value.map((s) => ({ skuId: s.id, counted: Number(counts[s.id]) }))
+    const items = changed.value.map((x) => ({ skuId: x.id, counted: x.counted }))
     const r = await applyAuditBatch(items, auth.actor, memo.value)
     toast.success(`실사 확정 완료 · ${r.changed}건 반영`)
-    await load()
+    clearCounts()
+    await fetchPage()
     memo.value = ''
   } catch (e) {
     toast.error('실사 실패: ' + (e.message || e.code))
@@ -152,7 +187,7 @@ async function confirmAudit() {
 
     <!-- 요약 -->
     <div class="mb-4 grid grid-cols-3 gap-3">
-      <div class="card p-3 text-center"><p class="text-xs text-slate-400">대상 SKU</p><p class="text-xl font-bold text-slate-800">{{ filtered.length }}</p></div>
+      <div class="card p-3 text-center"><p class="text-xs text-slate-400">대상 SKU</p><p class="text-xl font-bold text-slate-800">{{ total.toLocaleString() }}</p></div>
       <div class="card p-3 text-center"><p class="text-xs text-slate-400">차이 발생</p><p class="text-xl font-bold text-amber-500">{{ changed.length }}</p></div>
       <div class="card p-3 text-center"><p class="text-xs text-slate-400">차이 합계</p><p class="text-xl font-bold" :class="diffSum < 0 ? 'text-rose-500' : 'text-emerald-600'">{{ diffSum > 0 ? '+' : '' }}{{ diffSum }}</p></div>
     </div>
@@ -166,11 +201,15 @@ async function confirmAudit() {
       <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명 검색" />
       <label class="flex items-center gap-1.5 text-sm text-slate-500"><input v-model="onlyDiff" type="checkbox" class="rounded border-slate-300" /> 차이만</label>
       <input v-model="memo" class="input w-auto sm:max-w-[200px]" placeholder="실사 메모 (예: 2026-06 정기실사)" />
+      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+        <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
+      </select>
     </div>
 
-    <div class="card overflow-x-auto scrollbar-slim">
+    <div class="card">
+      <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
-      <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">대상 SKU가 없습니다.</div>
+      <div v-else-if="!displayRows.length" class="p-10 text-center text-sm text-slate-400">{{ onlyDiff ? '이 페이지에 차이 항목이 없습니다.' : '대상 SKU가 없습니다.' }}</div>
       <table v-else class="w-full min-w-[820px] text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
@@ -182,7 +221,7 @@ async function confirmAudit() {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="s in filtered" :key="s.id" class="hover:bg-slate-50/60" :class="diffOf(s) !== 0 ? 'bg-amber-50/40' : ''">
+          <tr v-for="s in displayRows" :key="s.id" class="hover:bg-slate-50/60" :class="diffOf(s) !== 0 ? 'bg-amber-50/40' : ''">
             <td class="px-3 py-2">
               <div class="flex items-center gap-2.5">
                 <img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" />
@@ -213,6 +252,8 @@ async function confirmAudit() {
           </tr>
         </tbody>
       </table>
+      </div>
+      <Pager v-if="total && !onlyDiff" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
 
     <ConfirmDialog ref="confirm" />

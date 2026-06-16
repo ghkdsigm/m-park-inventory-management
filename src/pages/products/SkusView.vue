@@ -1,10 +1,9 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { skus, products, complexes, categories, productCodes, productDetails } from '@/services/db'
 import { makeQrBatch } from '@/services/qr'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
-import { usePagination } from '@/composables/usePagination'
 import Pager from '@/components/ui/Pager.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -19,7 +18,7 @@ const { busy: saving, run } = useBusy()
 const confirm = ref(null)
 
 const loading = ref(true)
-const list = ref([])
+const rows = ref([])
 const productList = ref([])
 const complexList = ref([])
 const categoryList = ref([])
@@ -34,12 +33,17 @@ const priceMin = ref('')
 const priceMax = ref('')
 const selected = ref(new Set())
 
-// 목록에 존재하는 값들로 셀렉트 옵션 구성
-const distinct = (key) =>
-  [...new Set(list.value.map((s) => s[key]).filter((v) => v !== null && v !== undefined && String(v).trim() !== ''))]
-const colorOptions = computed(() => distinct('color').sort())
-const releaseYearOptions = computed(() => distinct('releaseYear').sort((a, b) => Number(b) - Number(a)))
-const productionYearOptions = computed(() => distinct('productionYear').sort((a, b) => Number(b) - Number(a)))
+// 색상/년도 셀렉트 옵션은 서버 distinct 로 1회 구성(전체 기준)
+const colorOptions = ref([])
+const releaseYearOptions = ref([])
+const productionYearOptions = ref([])
+
+// 서버측 페이징
+const sizes = [10, 30, 50]
+const page = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
 function resetFilters() {
   search.value = ''
@@ -56,36 +60,54 @@ const printing = ref(false)
 const qrModal = ref(false)
 const qrSku = ref(null)
 
-async function load() {
+async function fetchPage() {
   loading.value = true
   try {
-    ;[list.value, productList.value, complexList.value, categoryList.value, productCodeList.value, productDetailList.value] =
-      await Promise.all([skus.list(), products.list(), complexes.list(), categories.list(), productCodes.list(), productDetails.list()])
+    const r = await skus.page({
+      complexId: filterComplex.value,
+      color: fColor.value,
+      releaseYear: fRelease.value,
+      productionYear: fProduction.value,
+      priceMin: priceMin.value,
+      priceMax: priceMax.value,
+      search: search.value.trim(),
+      page: page.value,
+      pageSize: pageSize.value,
+    })
+    rows.value = r.rows
+    total.value = r.total
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))
   } finally {
     loading.value = false
   }
 }
+
+async function loadMasters() {
+  try {
+    ;[productList.value, complexList.value, categoryList.value, productCodeList.value, productDetailList.value] =
+      await Promise.all([products.list(), complexes.list(), categories.list(), productCodes.list(), productDetails.list()])
+    const opt = await skus.filterOptions()
+    colorOptions.value = opt.colors
+    releaseYearOptions.value = opt.releaseYears
+    productionYearOptions.value = opt.productionYears
+  } catch (e) {
+    /* 옵션 로드 실패는 치명적 아님 */
+  }
+}
+
+async function load() {
+  await loadMasters()
+  await fetchPage()
+}
 onMounted(load)
 
-const filtered = computed(() =>
-  list.value.filter((s) => {
-    if (filterComplex.value && s.complexId !== filterComplex.value) return false
-    if (fColor.value && s.color !== fColor.value) return false
-    if (fRelease.value && String(s.releaseYear) !== fRelease.value) return false
-    if (fProduction.value && String(s.productionYear) !== fProduction.value) return false
-    const price = Number(s.price) || 0
-    if (priceMin.value !== '' && price < Number(priceMin.value)) return false
-    if (priceMax.value !== '' && price > Number(priceMax.value)) return false
-    if (search.value) {
-      const q = search.value.toLowerCase()
-      return [s.code, s.productName, s.spec, s.purpose, s.pathLabel].some((v) => (v || '').toLowerCase().includes(q))
-    }
-    return true
-  })
-)
-const { paged, page, pageSize, sizes, total, totalPages } = usePagination(filtered)
+// 필터 변경 → 1페이지부터 재조회 (검색은 디바운스)
+watch([filterComplex, fColor, fRelease, fProduction, priceMin, priceMax], () => { page.value = 1; fetchPage() })
+watch(pageSize, () => { page.value = 1; fetchPage() })
+watch(page, fetchPage)
+let searchTimer = null
+watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; fetchPage() }, 350) })
 
 /* ---- 생성/수정 ---- */
 const modal = ref(false)
@@ -293,10 +315,11 @@ async function remove(s) {
 }
 
 /* ---- 선택/출력 ---- */
-const allChecked = computed(() => filtered.value.length > 0 && filtered.value.every((s) => selected.value.has(s.id)))
+// 현재 페이지 기준 전체선택 (선택은 페이지 넘겨도 유지됨)
+const allChecked = computed(() => rows.value.length > 0 && rows.value.every((s) => selected.value.has(s.id)))
 function toggleAll() {
-  if (allChecked.value) filtered.value.forEach((s) => selected.value.delete(s.id))
-  else filtered.value.forEach((s) => selected.value.add(s.id))
+  if (allChecked.value) rows.value.forEach((s) => selected.value.delete(s.id))
+  else rows.value.forEach((s) => selected.value.add(s.id))
   selected.value = new Set(selected.value)
 }
 function toggle(id) {
@@ -310,10 +333,10 @@ function showQr(s) {
 }
 
 async function printSelected() {
-  const targets = list.value.filter((s) => selected.value.has(s.id))
-  if (!targets.length) return toast.error('출력할 SKU를 선택하세요.')
+  if (!selected.value.size) return toast.error('출력할 SKU를 선택하세요.')
   printing.value = true
   try {
+    const targets = await skus.listByIds([...selected.value])
     printSheet.value = await makeQrBatch(targets)
     await new Promise((r) => setTimeout(r, 300))
     window.print()
@@ -373,7 +396,7 @@ const statusMeta = {
     <div class="card no-print">
       <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
-      <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">등록된 SKU가 없습니다.</div>
+      <div v-else-if="!rows.length" class="p-10 text-center text-sm text-slate-400">등록된 SKU가 없습니다.</div>
       <table v-else class="w-full min-w-[1040px] text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
@@ -391,7 +414,7 @@ const statusMeta = {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="s in paged" :key="s.id" class="hover:bg-slate-50/60" :class="selected.has(s.id) ? 'bg-brand-50/40' : ''">
+          <tr v-for="s in rows" :key="s.id" class="hover:bg-slate-50/60" :class="selected.has(s.id) ? 'bg-brand-50/40' : ''">
             <td class="px-3 py-2.5"><input type="checkbox" class="rounded border-slate-300" :checked="selected.has(s.id)" @change="toggle(s.id)" /></td>
             <td class="px-3 py-2.5">
               <span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span>
@@ -422,7 +445,7 @@ const statusMeta = {
         </tbody>
       </table>
       </div>
-      <Pager v-if="filtered.length" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
+      <Pager v-if="total" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
 
     <!-- 인쇄 라벨 시트 -->
@@ -433,7 +456,7 @@ const statusMeta = {
           <div class="min-w-0 text-[10px] leading-tight">
             <p class="font-mono font-bold text-black">{{ item.code }}</p>
             <p class="truncate text-slate-700">{{ item.productName }}</p>
-            <p class="text-slate-500">{{ item.spec }}</p>
+            <p class="text-slate-500">{{ dimText(item) || item.spec }}</p>
             <p v-if="[item.color, item.releaseYear, item.productionYear].some(Boolean)" class="text-slate-600">
               {{ [item.color, item.releaseYear && '출시 ' + item.releaseYear, item.productionYear && '생산 ' + item.productionYear].filter(Boolean).join(' · ') }}
             </p>

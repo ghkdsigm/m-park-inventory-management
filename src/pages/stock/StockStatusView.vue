@@ -5,9 +5,9 @@ import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import Pager from '@/components/ui/Pager.vue'
-import { usePagination } from '@/composables/usePagination'
 import { resolveImage } from '@/utils/image'
-import { lifecycleStatus, toJsDate, fmtDateTime } from '@/utils/date'
+import { lifecycleStatus, fmtDateTime } from '@/utils/date'
+import { specText } from '@/utils/sku'
 
 function lifeBadge(s) {
   if (!s.lifecycleEnabled) return null
@@ -38,11 +38,20 @@ async function openLocation(s) {
 
 const toast = useToast()
 const loading = ref(true)
-const list = ref([])
+
+// 마스터(셀렉트 옵션용) — 1회 로드
 const complexList = ref([])
 const categoryList = ref([])
 const productCodeList = ref([])
 const productDetailList = ref([])
+
+// 서버 페이지 결과
+const rows = ref([])
+const groups = ref([])
+const total = ref(0)
+const totalQty = ref(0)
+const lowCount = ref(0)
+const outCount = ref(0)
 
 const search = ref('')
 const fComplex = ref('')
@@ -53,6 +62,12 @@ const fStatus = ref('')
 const sort = ref('recent')
 const groupByComplex = ref(false)
 const showTotal = ref(false)
+
+// 페이징(서버측)
+const sizes = [10, 30, 50]
+const page = ref(1)
+const pageSize = ref(10)
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
 const SORTS = [
   { v: 'recent', t: '최신순' },
@@ -69,24 +84,56 @@ const STATUS = [
   { v: 'out', t: '품절' },
 ]
 
-async function load() {
+function curFilters() {
+  return {
+    complexId: fComplex.value,
+    categoryId: fCategory.value,
+    productCodeId: fProductCode.value,
+    productDetailId: fProductDetail.value,
+    status: fStatus.value,
+    search: search.value.trim(),
+  }
+}
+
+async function fetchPage() {
   loading.value = true
   try {
-    ;[list.value, complexList.value, categoryList.value, productCodeList.value, productDetailList.value] = await Promise.all([
-      skus.list(),
-      complexes.list(),
-      categories.list(),
-      productCodes.list(),
-      productDetails.list(),
-    ])
+    if (groupByComplex.value) {
+      groups.value = await skus.groupByComplex(curFilters())
+    } else {
+      const r = await skus.page({ ...curFilters(), sort: sort.value, page: page.value, pageSize: pageSize.value })
+      rows.value = r.rows
+      total.value = r.total
+      totalQty.value = r.totalQty
+      lowCount.value = r.lowCount
+      outCount.value = r.outCount
+    }
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))
   } finally {
     loading.value = false
   }
 }
-onMounted(load)
 
+async function loadMasters() {
+  try {
+    ;[complexList.value, categoryList.value, productCodeList.value, productDetailList.value] = await Promise.all([
+      complexes.list(),
+      categories.list(),
+      productCodes.list(),
+      productDetails.list(),
+    ])
+  } catch (e) {
+    /* 셀렉트 옵션 로드 실패는 치명적 아님 */
+  }
+}
+
+onMounted(async () => {
+  await loadMasters()
+  await fetchPage()
+})
+
+// 셀렉트 옵션(연쇄)
 const categoryOptions = computed(() => (fComplex.value ? categoryList.value.filter((c) => c.complexId === fComplex.value) : categoryList.value))
 const productCodeOptions = computed(() => (fCategory.value ? productCodeList.value.filter((p) => p.categoryId === fCategory.value) : productCodeList.value))
 const productDetailOptions = computed(() => (fProductCode.value ? productDetailList.value.filter((d) => d.productCodeId === fProductCode.value) : productDetailList.value))
@@ -94,43 +141,35 @@ watch(fComplex, () => { fCategory.value = ''; fProductCode.value = ''; fProductD
 watch(fCategory, () => { fProductCode.value = ''; fProductDetail.value = '' })
 watch(fProductCode, () => { fProductDetail.value = '' })
 
-const filtered = computed(() => {
-  let arr = list.value.filter((s) => {
-    if (fComplex.value && s.complexId !== fComplex.value) return false
-    if (fCategory.value && s.categoryId !== fCategory.value) return false
-    if (fProductCode.value && s.productCodeId !== fProductCode.value) return false
-    if (fProductDetail.value && s.productDetailId !== fProductDetail.value) return false
-    if (fStatus.value && s.status !== fStatus.value) return false
-    if (search.value) {
-      const q = search.value.toLowerCase()
-      return [s.code, s.productName, s.spec, s.pathLabel].some((v) => (v || '').toLowerCase().includes(q))
-    }
-    return true
-  })
-  const cmp = {
-    recent: (a, b) => (toJsDate(b.createdAt)?.getTime() || 0) - (toJsDate(a.createdAt)?.getTime() || 0),
-    qtyDesc: (a, b) => b.qty - a.qty,
-    qtyAsc: (a, b) => a.qty - b.qty,
-    outDesc: (a, b) => (b.totalOut || 0) - (a.totalOut || 0),
-    inDesc: (a, b) => (b.totalIn || 0) - (a.totalIn || 0),
-    code: (a, b) => (a.code > b.code ? 1 : -1),
-  }
-  return [...arr].sort(cmp[sort.value])
+// 필터/정렬/묶기 변경 → 1페이지부터 다시 조회
+watch([fComplex, fCategory, fProductCode, fProductDetail, fStatus, sort, groupByComplex], () => {
+  page.value = 1
+  fetchPage()
 })
-const { paged, page, pageSize, sizes, total, totalPages } = usePagination(filtered)
-
-const grouped = computed(() => {
-  const g = {}
-  filtered.value.forEach((s) => (g[s.complexName || '미지정'] ||= []).push(s))
-  return g
+// 페이지 크기 변경 → 1페이지부터
+watch(pageSize, () => { page.value = 1; fetchPage() })
+// 페이지 이동 → 해당 페이지 조회
+watch(page, fetchPage)
+// 검색 입력 → 디바운스 후 1페이지부터
+let searchTimer = null
+watch(search, () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { page.value = 1; fetchPage() }, 350)
 })
 
-const stats = computed(() => ({
-  skuCount: filtered.value.length,
-  totalQty: filtered.value.reduce((a, s) => a + (Number(s.qty) || 0), 0),
-  low: filtered.value.filter((s) => s.status === 'low').length,
-  out: filtered.value.filter((s) => s.status === 'out').length,
-}))
+const stats = computed(() =>
+  groupByComplex.value
+    ? groups.value.reduce(
+        (a, g) => ({
+          skuCount: a.skuCount + Number(g.skuCount || 0),
+          totalQty: a.totalQty + Number(g.totalQty || 0),
+          low: a.low + Number(g.lowCount || 0),
+          out: a.out + Number(g.outCount || 0),
+        }),
+        { skuCount: 0, totalQty: 0, low: 0, out: 0 }
+      )
+    : { skuCount: total.value, totalQty: totalQty.value, low: lowCount.value, out: outCount.value }
+)
 
 const statusMeta = {
   in_stock: { t: '정상', c: 'bg-emerald-50 text-emerald-700' },
@@ -153,7 +192,7 @@ function resetFilters() {
 
     <!-- 요약 -->
     <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <div class="card p-3 text-center"><p class="text-xs text-slate-400">SKU 수</p><p class="text-xl font-bold text-slate-800">{{ stats.skuCount }}</p></div>
+      <div class="card p-3 text-center"><p class="text-xs text-slate-400">SKU 수</p><p class="text-xl font-bold text-slate-800">{{ stats.skuCount.toLocaleString() }}</p></div>
       <div class="card p-3 text-center"><p class="text-xs text-slate-400">총 재고</p><p class="text-xl font-bold text-brand-600">{{ stats.totalQty.toLocaleString() }}</p></div>
       <div class="card p-3 text-center"><p class="text-xs text-slate-400">부족</p><p class="text-xl font-bold text-amber-500">{{ stats.low }}</p></div>
       <div class="card p-3 text-center"><p class="text-xs text-slate-400">품절</p><p class="text-xl font-bold text-rose-500">{{ stats.out }}</p></div>
@@ -166,37 +205,72 @@ function resetFilters() {
       <select v-model="fProductCode" class="input w-auto"><option value="">전체 제품코드</option><option v-for="p in productCodeOptions" :key="p.id" :value="p.id">{{ p.name }}</option></select>
       <select v-model="fProductDetail" class="input w-auto"><option value="">전체 상세코드</option><option v-for="d in productDetailOptions" :key="d.id" :value="d.id">{{ d.name }}</option></select>
       <select v-model="fStatus" class="input w-auto"><option v-for="s in STATUS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
-      <select v-model="sort" class="input w-auto"><option v-for="s in SORTS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+      <select v-if="!groupByComplex" v-model="sort" class="input w-auto"><option v-for="s in SORTS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
       <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명 검색" />
-      <button class="btn-ghost btn-sm" :class="showTotal ? 'bg-brand-50 text-brand-700 ring-brand-300' : ''" @click="showTotal = !showTotal">합계 보기</button>
+      <button v-if="!groupByComplex" class="btn-ghost btn-sm" :class="showTotal ? 'bg-brand-50 text-brand-700 ring-brand-300' : ''" @click="showTotal = !showTotal">합계 보기</button>
       <button class="btn-ghost btn-sm" @click="resetFilters">초기화</button>
-      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+      <select v-if="!groupByComplex" v-model="pageSize" class="input w-auto sm:ml-auto">
         <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
       </select>
     </div>
 
-    <div class="card">
+    <!-- 단지별 묶기: 요약 -->
+    <div v-if="groupByComplex" class="card">
       <div class="overflow-x-auto scrollbar-slim">
-      <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
-      <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">조건에 맞는 재고가 없습니다.</div>
-      <table v-else class="w-full text-sm">
-        <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
-          <tr>
-            <th class="px-3 py-2.5 font-semibold">SKU / 상품</th>
-            <th class="hidden px-3 py-2.5 font-semibold md:table-cell">경로</th>
-            <th class="hidden px-3 py-2.5 font-semibold sm:table-cell">위치</th>
-            <th class="px-3 py-2.5 text-right font-semibold">재고</th>
-            <th class="hidden px-3 py-2.5 text-right font-semibold sm:table-cell">안전</th>
-            <th class="px-3 py-2.5 font-semibold">상태</th>
-            <th class="hidden px-3 py-2.5 text-right font-semibold lg:table-cell">입고/출고</th>
-          </tr>
-        </thead>
-        <!-- 단지별 묶기 -->
-        <template v-if="groupByComplex">
-          <tbody v-for="(rows, cx) in grouped" :key="cx" class="divide-y divide-slate-50">
-            <tr class="bg-slate-50/80"><td colspan="7" class="px-3 py-1.5 text-xs font-bold text-slate-500">📦 {{ cx }} <span class="font-normal text-slate-400">({{ rows.length }} SKU)</span></td></tr>
+        <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
+        <div v-else-if="!groups.length" class="p-10 text-center text-sm text-slate-400">조건에 맞는 재고가 없습니다.</div>
+        <table v-else class="w-full text-sm">
+          <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
+            <tr>
+              <th class="px-4 py-2.5 font-semibold">단지</th>
+              <th class="px-4 py-2.5 text-right font-semibold">SKU 수</th>
+              <th class="px-4 py-2.5 text-right font-semibold">총 재고</th>
+              <th class="px-4 py-2.5 text-right font-semibold">부족</th>
+              <th class="px-4 py-2.5 text-right font-semibold">품절</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-50">
+            <tr v-for="g in groups" :key="g.complexName" class="hover:bg-slate-50/60">
+              <td class="px-4 py-2.5 font-medium text-slate-700">📦 {{ g.complexName }}</td>
+              <td class="px-4 py-2.5 text-right text-slate-600">{{ Number(g.skuCount).toLocaleString() }}</td>
+              <td class="px-4 py-2.5 text-right font-bold text-brand-700">{{ Number(g.totalQty).toLocaleString() }}</td>
+              <td class="px-4 py-2.5 text-right" :class="Number(g.lowCount) ? 'text-amber-600' : 'text-slate-300'">{{ g.lowCount }}</td>
+              <td class="px-4 py-2.5 text-right" :class="Number(g.outCount) ? 'text-rose-500' : 'text-slate-300'">{{ g.outCount }}</td>
+            </tr>
+          </tbody>
+          <tfoot class="border-t-2 border-slate-200 bg-slate-50 text-sm font-bold">
+            <tr>
+              <td class="px-4 py-3 text-slate-600">합계</td>
+              <td class="px-4 py-3 text-right text-slate-700">{{ stats.skuCount.toLocaleString() }}</td>
+              <td class="px-4 py-3 text-right text-brand-700">{{ stats.totalQty.toLocaleString() }}</td>
+              <td class="px-4 py-3 text-right text-amber-600">{{ stats.low }}</td>
+              <td class="px-4 py-3 text-right text-rose-500">{{ stats.out }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- 평면 목록 -->
+    <div v-else class="card">
+      <div class="overflow-x-auto scrollbar-slim">
+        <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
+        <div v-else-if="!rows.length" class="p-10 text-center text-sm text-slate-400">조건에 맞는 재고가 없습니다.</div>
+        <table v-else class="w-full text-sm">
+          <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
+            <tr>
+              <th class="px-3 py-2.5 font-semibold">SKU / 상품</th>
+              <th class="hidden px-3 py-2.5 font-semibold md:table-cell">경로</th>
+              <th class="hidden px-3 py-2.5 font-semibold sm:table-cell">위치</th>
+              <th class="px-3 py-2.5 text-right font-semibold">재고</th>
+              <th class="hidden px-3 py-2.5 text-right font-semibold sm:table-cell">안전</th>
+              <th class="px-3 py-2.5 font-semibold">상태</th>
+              <th class="hidden px-3 py-2.5 text-right font-semibold lg:table-cell">입고/출고</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-50">
             <tr v-for="s in rows" :key="s.id" class="hover:bg-slate-50/60">
-              <td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" /><div><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span><p class="mt-0.5 text-slate-700">{{ s.productName }} <span class="text-xs text-slate-400">{{ s.spec }}</span></p></div></div></td>
+              <td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" /><div><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span><p class="mt-0.5 text-slate-700">{{ s.productName }} <span class="text-xs text-slate-400">{{ specText(s) }}</span></p></div></div></td>
               <td class="hidden px-3 py-2.5 text-xs text-slate-400 md:table-cell">{{ s.pathLabel }}</td>
               <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-left ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:ring-brand-300" title="보관위치 이력 보기" @click="openLocation(s)"><span v-if="s.locationLabel" class="text-slate-600">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">위치 미지정</span><span v-if="s.locationVerifiedAt" class="text-emerald-600" title="실사 검증됨">✓</span><svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
               <td class="px-3 py-2.5 text-right font-bold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-800'">{{ s.qty }}</td>
@@ -205,33 +279,20 @@ function resetFilters() {
               <td class="hidden px-3 py-2.5 text-right text-xs text-slate-400 lg:table-cell">+{{ s.totalIn || 0 }} / -{{ s.totalOut || 0 }}</td>
             </tr>
           </tbody>
-        </template>
-        <!-- 평면 -->
-        <tbody v-else class="divide-y divide-slate-50">
-          <tr v-for="s in paged" :key="s.id" class="hover:bg-slate-50/60">
-            <td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" /><div><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span><p class="mt-0.5 text-slate-700">{{ s.productName }} <span class="text-xs text-slate-400">{{ s.spec }}</span></p></div></div></td>
-            <td class="hidden px-3 py-2.5 text-xs text-slate-400 md:table-cell">{{ s.pathLabel }}</td>
-              <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-left ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:ring-brand-300" title="보관위치 이력 보기" @click="openLocation(s)"><span v-if="s.locationLabel" class="text-slate-600">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">위치 미지정</span><span v-if="s.locationVerifiedAt" class="text-emerald-600" title="실사 검증됨">✓</span><svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
-            <td class="px-3 py-2.5 text-right font-bold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-800'">{{ s.qty }}</td>
-            <td class="hidden px-3 py-2.5 text-right text-slate-400 sm:table-cell">{{ s.safetyStock || '—' }}</td>
-            <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span><span v-if="lifeBadge(s)" class="badge ml-1" :class="lifeBadge(s).c">{{ lifeBadge(s).t }}</span></td>
-            <td class="hidden px-3 py-2.5 text-right text-xs text-slate-400 lg:table-cell">+{{ s.totalIn || 0 }} / -{{ s.totalOut || 0 }}</td>
-          </tr>
-        </tbody>
-        <tfoot v-if="showTotal" class="border-t-2 border-slate-200 bg-slate-50 text-sm font-bold">
-          <tr>
-            <td class="px-3 py-3 text-slate-600">합계 · {{ filtered.length }} SKU</td>
-            <td class="hidden md:table-cell"></td>
-            <td class="hidden sm:table-cell"></td>
-            <td class="px-3 py-3 text-right text-brand-700">{{ stats.totalQty.toLocaleString() }}개</td>
-            <td class="hidden sm:table-cell"></td>
-            <td></td>
-            <td class="hidden lg:table-cell"></td>
-          </tr>
-        </tfoot>
-      </table>
+          <tfoot v-if="showTotal" class="border-t-2 border-slate-200 bg-slate-50 text-sm font-bold">
+            <tr>
+              <td class="px-3 py-3 text-slate-600">합계 · {{ stats.skuCount.toLocaleString() }} SKU</td>
+              <td class="hidden md:table-cell"></td>
+              <td class="hidden sm:table-cell"></td>
+              <td class="px-3 py-3 text-right text-brand-700">{{ stats.totalQty.toLocaleString() }}개</td>
+              <td class="hidden sm:table-cell"></td>
+              <td></td>
+              <td class="hidden lg:table-cell"></td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
-      <Pager v-if="filtered.length && !groupByComplex" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
+      <Pager v-if="total" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
 
     <!-- 보관위치 + 변경 이력 -->

@@ -155,15 +155,23 @@ export const skus = {
   async listByProduct(productId) {
     return rowsToCamel(unwrap(await supabase.from('skus').select('*').eq('product_id', productId).order('code', { ascending: true })))
   },
+  /** 연한관리 대상(소량)만 서버에서 조회 — 전체 풀로드 방지 */
+  async listLifecycle() {
+    return rowsToCamel(
+      unwrap(await supabase.from('skus').select('*').eq('lifecycle_enabled', true).order('next_replace_at', { ascending: true, nullsFirst: false }))
+    )
+  },
   /**
    * 서버측 페이징/필터/정렬/집계 (#1 풀로드 제거). 한 번 호출로 페이지 행 + 총계까지.
    * @returns {{ rows, total, totalQty, lowCount, outCount }}
    */
   async page({
     complexId = '', categoryId = '', productCodeId = '', productDetailId = '',
-    status = '', search = '', lifecycleOnly = false,
+    status = '', search = '', color = '', releaseYear = '', productionYear = '',
+    priceMin = '', priceMax = '', lifecycleOnly = false,
     sort = 'recent', page = 1, pageSize = 10,
   } = {}) {
+    const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
     const data = unwrap(
       await supabase.rpc('skus_page', {
         p_complex: complexId || null,
@@ -172,6 +180,11 @@ export const skus = {
         p_product_detail: productDetailId || null,
         p_status: status || null,
         p_search: search || null,
+        p_color: color || null,
+        p_release_year: releaseYear || null,
+        p_production_year: productionYear || null,
+        p_price_min: numOrNull(priceMin),
+        p_price_max: numOrNull(priceMax),
         p_lifecycle_only: !!lifecycleOnly,
         p_sort: sort || 'recent',
         p_limit: pageSize,
@@ -184,6 +197,32 @@ export const skus = {
       totalQty: data?.totalQty || 0,
       lowCount: data?.lowCount || 0,
       outCount: data?.outCount || 0,
+    }
+  },
+  /** 색상/출시년도/생산년도 셀렉트 옵션(전체 distinct) */
+  async filterOptions() {
+    const data = unwrap(await supabase.rpc('sku_filter_options'))
+    return { colors: data?.colors || [], releaseYears: data?.releaseYears || [], productionYears: data?.productionYears || [] }
+  },
+  /** 선택된 SKU들(여러 페이지 걸쳐 선택 가능)을 id로 일괄 조회 — QR 출력용 */
+  async listByIds(ids) {
+    if (!ids || !ids.length) return []
+    return rowsToCamel(unwrap(await supabase.from('skus').select('*').in('id', ids)))
+  },
+  /** 대시보드 요약(서버 집계) — 전체 SKU 풀로드 대체 */
+  async dashboardSummary() {
+    const d = unwrap(await supabase.rpc('dashboard_summary'))
+    return {
+      complexCount: d?.complexCount || 0,
+      productCount: d?.productCount || 0,
+      skuCount: d?.skuCount || 0,
+      totalQty: d?.totalQty || 0,
+      lowCount: d?.lowCount || 0,
+      outCount: d?.outCount || 0,
+      lowList: rowsToCamel(d?.lowList || []),
+      lifeSoon: d?.lifeSoon || 0,
+      lifeOver: d?.lifeOver || 0,
+      lifeList: rowsToCamel(d?.lifeList || []),
     }
   },
   /** 단지별 묶기 요약 (단지별 SKU수/총재고/부족/품절) */

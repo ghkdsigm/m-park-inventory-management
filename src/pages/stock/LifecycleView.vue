@@ -25,8 +25,8 @@ const search = ref('')
 async function load() {
   loading.value = true
   try {
-    const [sk, cx] = await Promise.all([skus.list(), complexes.list()])
-    all.value = sk.filter((s) => s.lifecycleEnabled)
+    const [sk, cx] = await Promise.all([skus.listLifecycle(), complexes.list()])
+    all.value = sk
     complexList.value = cx
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))

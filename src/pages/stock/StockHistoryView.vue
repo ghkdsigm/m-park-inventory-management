@@ -3,12 +3,14 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { skus, complexes, listMovements, listLocationLogs } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import Pager from '@/components/ui/Pager.vue'
 import { resolveImage } from '@/utils/image'
-import { fmtDateTime, fmtDate, toJsDate } from '@/utils/date'
+import { fmtDateTime, fmtDate } from '@/utils/date'
+import { specText } from '@/utils/sku'
 
 const toast = useToast()
 const loading = ref(true)
-const list = ref([])
+const rows = ref([])
 const complexList = ref([])
 const search = ref('')
 const fComplex = ref('')
@@ -18,13 +20,19 @@ const fProduction = ref('')
 const priceMin = ref('')
 const priceMax = ref('')
 
-const distinct = (key) =>
-  [...new Set(list.value.map((s) => s[key]).filter((v) => v !== null && v !== undefined && String(v).trim() !== ''))]
-const colorOptions = computed(() => distinct('color').sort())
-const releaseYearOptions = computed(() => distinct('releaseYear').sort((a, b) => Number(b) - Number(a)))
-const productionYearOptions = computed(() => distinct('productionYear').sort((a, b) => Number(b) - Number(a)))
+const colorOptions = ref([])
+const releaseYearOptions = ref([])
+const productionYearOptions = ref([])
 
-const selectedId = ref('')
+// 서버 페이징
+const sizes = [10, 30, 50]
+const page = ref(1)
+const pageSize = ref(30)
+const total = ref(0)
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+
+const selectedSku = ref(null)
+const selected = selectedSku
 const moves = ref([])
 const locLogs = ref([])
 const detailLoading = ref(false)
@@ -41,45 +49,54 @@ const statusMeta = {
   out: { t: '품절', c: 'bg-rose-50 text-rose-600' },
 }
 
-const ts = (d) => toJsDate(d)?.getTime() || 0
-
-async function load() {
+async function fetchPage(autoSelect = false) {
   loading.value = true
   try {
-    ;[list.value, complexList.value] = await Promise.all([skus.list(), complexes.list()])
-    // 가장 최근 변경(updatedAt)된 SKU 우선
-    list.value.sort((a, b) => ts(b.updatedAt || b.createdAt) - ts(a.updatedAt || a.createdAt))
-    if (filtered.value.length) select(filtered.value[0])
+    const r = await skus.page({
+      complexId: fComplex.value,
+      color: fColor.value,
+      releaseYear: fRelease.value,
+      productionYear: fProduction.value,
+      priceMin: priceMin.value,
+      priceMax: priceMax.value,
+      search: search.value.trim(),
+      sort: 'moved',
+      page: page.value,
+      pageSize: pageSize.value,
+    })
+    rows.value = r.rows
+    total.value = r.total
+    if (autoSelect && r.rows.length && !selectedSku.value) select(r.rows[0])
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))
   } finally {
     loading.value = false
   }
 }
-onMounted(load)
+async function loadMasters() {
+  try {
+    complexList.value = await complexes.list()
+    const opt = await skus.filterOptions()
+    colorOptions.value = opt.colors
+    releaseYearOptions.value = opt.releaseYears
+    productionYearOptions.value = opt.productionYears
+  } catch (e) {
+    /* 옵션 로드 실패 무시 */
+  }
+}
+onMounted(async () => { await loadMasters(); await fetchPage(true) })
 
-const filtered = computed(() =>
-  list.value.filter((s) => {
-    if (fComplex.value && s.complexId !== fComplex.value) return false
-    if (fColor.value && s.color !== fColor.value) return false
-    if (fRelease.value && String(s.releaseYear) !== fRelease.value) return false
-    if (fProduction.value && String(s.productionYear) !== fProduction.value) return false
-    const price = Number(s.price) || 0
-    if (priceMin.value !== '' && price < Number(priceMin.value)) return false
-    if (priceMax.value !== '' && price > Number(priceMax.value)) return false
-    if (search.value) {
-      const q = search.value.toLowerCase()
-      return [s.code, s.productName, s.spec, s.pathLabel].some((v) => (v || '').toLowerCase().includes(q))
-    }
-    return true
-  })
-)
-const selected = computed(() => list.value.find((s) => s.id === selectedId.value) || null)
+watch([fComplex, fColor, fRelease, fProduction, priceMin, priceMax], () => { page.value = 1; fetchPage() })
+watch(pageSize, () => { page.value = 1; fetchPage() })
+watch(page, () => fetchPage())
+let searchTimer = null
+watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; fetchPage() }, 350) })
 
 function select(s) {
-  selectedId.value = s.id
+  selectedSku.value = s
+  loadDetail(s.id)
 }
-watch(selectedId, async (id) => {
+async function loadDetail(id) {
   if (!id) return
   detailLoading.value = true
   moves.value = []
@@ -91,7 +108,7 @@ watch(selectedId, async (id) => {
   } finally {
     detailLoading.value = false
   }
-})
+}
 
 function exportCsv() {
   const s = selected.value
@@ -140,15 +157,18 @@ function exportCsv() {
             <input v-model="priceMax" type="number" min="0" class="input w-20 text-sm" placeholder="↑" />
           </div>
           <input v-model="search" class="input w-full text-sm" placeholder="SKU코드/상품명 검색" />
+          <select v-model="pageSize" class="input w-auto text-sm sm:ml-auto">
+            <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
+          </select>
         </div>
         <div class="max-h-[68vh] flex-1 overflow-y-auto scrollbar-slim">
           <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
-          <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">SKU가 없습니다.</div>
+          <div v-else-if="!rows.length" class="p-10 text-center text-sm text-slate-400">SKU가 없습니다.</div>
           <button
-            v-for="s in filtered"
+            v-for="s in rows"
             :key="s.id"
             class="flex w-full items-center gap-2.5 border-b border-slate-50 px-3 py-2.5 text-left hover:bg-slate-50"
-            :class="selectedId === s.id ? 'bg-brand-50' : ''"
+            :class="selected?.id === s.id ? 'bg-brand-50' : ''"
             @click="select(s)"
           >
             <img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" />
@@ -163,6 +183,7 @@ function exportCsv() {
             </div>
           </button>
         </div>
+        <Pager v-if="total" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
       </div>
 
       <!-- 우: 상세 이력 -->
@@ -175,7 +196,7 @@ function exportCsv() {
               <img :src="resolveImage(selected)" class="h-24 w-24 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="" />
               <div class="min-w-0 flex-1">
                 <p class="font-mono text-lg font-bold text-slate-800">{{ selected.code }}</p>
-                <p class="text-sm text-slate-600">{{ selected.productName }}<span v-if="selected.spec" class="text-slate-400"> · {{ selected.spec }}</span></p>
+                <p class="text-sm text-slate-600">{{ selected.productName }}<span v-if="specText(selected)" class="text-slate-400"> · {{ specText(selected) }}</span></p>
                 <p class="mt-0.5 text-xs text-slate-400">{{ selected.pathLabel }}</p>
                 <div class="mt-1.5 flex items-center gap-2">
                   <span class="text-sm text-slate-400">현재 재고</span>

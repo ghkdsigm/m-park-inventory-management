@@ -17,6 +17,11 @@ create or replace function public.skus_page(
   p_product_detail uuid default null,
   p_status text default null,
   p_search text default null,
+  p_color text default null,
+  p_release_year text default null,
+  p_production_year text default null,
+  p_price_min numeric default null,
+  p_price_max numeric default null,
   p_lifecycle_only boolean default false,
   p_sort text default 'recent',
   p_limit int default 10,
@@ -30,6 +35,11 @@ language sql stable security definer set search_path = public as $$
       and (p_product_code is null or s.product_code_id = p_product_code)
       and (p_product_detail is null or s.product_detail_id = p_product_detail)
       and (p_status is null or p_status = '' or s.status = p_status)
+      and (p_color is null or p_color = '' or s.color = p_color)
+      and (p_release_year is null or p_release_year = '' or s.release_year = p_release_year)
+      and (p_production_year is null or p_production_year = '' or s.production_year = p_production_year)
+      and (p_price_min is null or s.price >= p_price_min)
+      and (p_price_max is null or s.price <= p_price_max)
       and (not p_lifecycle_only or s.lifecycle_enabled)
       and (
         p_search is null or p_search = ''
@@ -54,6 +64,7 @@ language sql stable security definer set search_path = public as $$
       case when p_sort = 'outDesc'     then total_out end desc nulls last,
       case when p_sort = 'inDesc'      then total_in end desc nulls last,
       case when p_sort = 'nextReplace' then next_replace_at end asc nulls last,
+      case when p_sort = 'moved'       then coalesce(last_moved_at, created_at) end desc nulls last,
       case when p_sort = 'code'        then code end asc,
       created_at desc
     limit greatest(p_limit, 0) offset greatest(p_offset, 0)
@@ -63,7 +74,7 @@ language sql stable security definer set search_path = public as $$
     'totalQty', (select total_qty from agg),
     'lowCount', (select low_count from agg),
     'outCount', (select out_count from agg),
-    'rows',     coalesce((select json_agg(page.*) from page), '[]'::json)
+    'rows',     coalesce((select json_agg(page) from page), '[]'::json)
   );
 $$;
 
@@ -99,5 +110,45 @@ language sql stable security definer set search_path = public as $$
   order by total_qty desc;
 $$;
 
-grant execute on function public.skus_page(uuid, uuid, uuid, uuid, text, text, boolean, text, int, int) to authenticated;
+/* ---------- 색상/년도 셀렉트 옵션(전체 distinct) ---------- */
+create or replace function public.sku_filter_options()
+returns json
+language sql stable security definer set search_path = public as $$
+  select json_build_object(
+    'colors', coalesce((select json_agg(c order by c) from (select distinct color as c from public.skus where color is not null and color <> '') t), '[]'::json),
+    'releaseYears', coalesce((select json_agg(y order by y desc) from (select distinct release_year as y from public.skus where release_year is not null and release_year <> '') t), '[]'::json),
+    'productionYears', coalesce((select json_agg(y order by y desc) from (select distinct production_year as y from public.skus where production_year is not null and production_year <> '') t), '[]'::json)
+  );
+$$;
+
+/* ---------- 대시보드 요약(전 사용자 진입) ---------- */
+create or replace function public.dashboard_summary()
+returns json
+language sql stable security definer set search_path = public as $$
+  select json_build_object(
+    'complexCount', (select count(*) from public.complexes),
+    'productCount', (select count(*) from public.products),
+    'skuCount', (select count(*) from public.skus),
+    'totalQty', (select coalesce(sum(qty), 0) from public.skus),
+    'lowCount', (select count(*) from public.skus where status = 'low'),
+    'outCount', (select count(*) from public.skus where status = 'out'),
+    'lowList', coalesce((select json_agg(t) from (
+        select * from public.skus where status in ('low','out') order by qty asc, code asc limit 6
+      ) t), '[]'::json),
+    'lifeSoon', (select count(*) from public.skus
+        where lifecycle_enabled and next_replace_at is not null
+          and next_replace_at >= now() and next_replace_at < now() + interval '30 days'),
+    'lifeOver', (select count(*) from public.skus
+        where lifecycle_enabled and next_replace_at is not null and next_replace_at < now()),
+    'lifeList', coalesce((select json_agg(t) from (
+        select * from public.skus
+        where lifecycle_enabled and next_replace_at is not null and next_replace_at < now() + interval '30 days'
+        order by next_replace_at asc limit 6
+      ) t), '[]'::json)
+  );
+$$;
+
+grant execute on function public.skus_page(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, boolean, text, int, int) to authenticated;
 grant execute on function public.skus_group_by_complex(uuid, uuid, uuid, uuid, text, text) to authenticated;
+grant execute on function public.sku_filter_options() to authenticated;
+grant execute on function public.dashboard_summary() to authenticated;

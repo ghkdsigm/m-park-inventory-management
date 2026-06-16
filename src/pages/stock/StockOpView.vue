@@ -5,8 +5,10 @@ import { skus, complexes, categories, productCodes, productDetails, storageLocat
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import Pager from '@/components/ui/Pager.vue'
 import { resolveImage } from '@/utils/image'
 import { fmtDateTime } from '@/utils/date'
+import { specText } from '@/utils/sku'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -30,12 +32,18 @@ const reasonOptions = computed(() => (op.value === 'in' ? IN_REASONS : op.value 
 const reasonLabel = computed(() => (op.value === 'adjust' ? '조정 사유' : '사유 / 구분'))
 
 const loading = ref(true)
-const list = ref([])
+const rows = ref([])
 const complexList = ref([])
 const categoryList = ref([])
 const productCodeList = ref([])
 const productDetailList = ref([])
 const search = ref('')
+// 서버 페이징
+const sizes = [10, 30, 50]
+const page = ref(1)
+const pageSize = ref(30)
+const total = ref(0)
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const filterComplex = ref('')
 const fCategory = ref('')
 const fProductCode = ref('')
@@ -46,7 +54,7 @@ const pdOptions = computed(() => (fProductCode.value ? productDetailList.value.f
 watch(filterComplex, () => { fCategory.value = ''; fProductCode.value = ''; fProductDetail.value = '' })
 watch(fCategory, () => { fProductCode.value = ''; fProductDetail.value = '' })
 watch(fProductCode, () => { fProductDetail.value = '' })
-const selectedId = ref('')
+const selectedSku = ref(null)
 const qty = ref(1)
 const memo = ref('')
 const working = ref(false)
@@ -89,37 +97,46 @@ function onSubChange() {
   if (locId.value && !locOptions.value.find((l) => l.id === locId.value)) locId.value = ''
 }
 
-async function load() {
+async function fetchPage() {
   loading.value = true
   try {
-    ;[list.value, complexList.value, storageLocs.value, categoryList.value, productCodeList.value, productDetailList.value] =
-      await Promise.all([skus.list(), complexes.list(), storageLocations.list(), categories.list(), productCodes.list(), productDetails.list()])
+    const r = await skus.page({
+      complexId: filterComplex.value,
+      categoryId: fCategory.value,
+      productCodeId: fProductCode.value,
+      productDetailId: fProductDetail.value,
+      search: search.value.trim(),
+      page: page.value,
+      pageSize: pageSize.value,
+    })
+    rows.value = r.rows
+    total.value = r.total
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))
   } finally {
     loading.value = false
   }
 }
-onMounted(load)
-watch(op, () => {
-  selectedId.value = ''
-  movements.value = []
-})
+async function loadMasters() {
+  try {
+    ;[complexList.value, storageLocs.value, categoryList.value, productCodeList.value, productDetailList.value] =
+      await Promise.all([complexes.list(), storageLocations.list(), categories.list(), productCodes.list(), productDetails.list()])
+  } catch (e) {
+    /* 옵션 로드 실패 무시 */
+  }
+}
+onMounted(async () => { await loadMasters(); await fetchPage() })
 
-const filtered = computed(() =>
-  list.value.filter((s) => {
-    if (filterComplex.value && s.complexId !== filterComplex.value) return false
-    if (fCategory.value && s.categoryId !== fCategory.value) return false
-    if (fProductCode.value && s.productCodeId !== fProductCode.value) return false
-    if (fProductDetail.value && s.productDetailId !== fProductDetail.value) return false
-    if (search.value) {
-      const q = search.value.toLowerCase()
-      return [s.code, s.productName, s.spec].some((v) => (v || '').toLowerCase().includes(q))
-    }
-    return true
-  })
-)
-const selected = computed(() => list.value.find((s) => s.id === selectedId.value) || null)
+watch([filterComplex, fCategory, fProductCode, fProductDetail], () => { page.value = 1; fetchPage() })
+watch(pageSize, () => { page.value = 1; fetchPage() })
+watch(page, fetchPage)
+let searchTimer = null
+watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; fetchPage() }, 350) })
+
+watch(op, () => { selectedSku.value = null; movements.value = [] })
+
+const selected = selectedSku
+function selectSku(s) { selectedSku.value = s }
 
 watch(selected, async (s) => {
   if (cfg.value.mode === 'set') qty.value = s ? s.qty : 0
@@ -156,8 +173,9 @@ async function saveLocation(clear = false) {
       locId.value = ''
     }
     await skus.setLocation(selected.value.id, loc)
-    const idx = list.value.findIndex((s) => s.id === selected.value.id)
-    if (idx > -1) list.value[idx] = { ...list.value[idx], ...loc }
+    selectedSku.value = { ...selectedSku.value, ...loc }
+    const idx = rows.value.findIndex((s) => s.id === selectedSku.value.id)
+    if (idx > -1) rows.value[idx] = { ...rows.value[idx], ...loc }
     toast.success(clear ? '위치가 삭제되었습니다.' : '위치가 저장되었습니다.')
   } catch (e) {
     toast.error('위치 저장 실패: ' + (e.message || e.code))
@@ -166,15 +184,20 @@ async function saveLocation(clear = false) {
   }
 }
 
-// SKU 코드 직접 입력(스캐너) → Enter 로 선택
-function pickByCode() {
+// SKU 코드 직접 입력(스캐너) → Enter 로 선택 (서버 조회)
+async function pickByCode() {
   const code = search.value.trim()
-  const hit = list.value.find((s) => s.code.toLowerCase() === code.toLowerCase())
-  if (hit) {
-    selectedId.value = hit.id
-    search.value = ''
-  } else {
-    toast.error('일치하는 SKU 코드가 없습니다.')
+  if (!code) return
+  try {
+    const hit = await skus.getByCode(code)
+    if (hit) {
+      selectedSku.value = hit
+      search.value = ''
+    } else {
+      toast.error('일치하는 SKU 코드가 없습니다.')
+    }
+  } catch (e) {
+    toast.error('조회 실패: ' + (e.message || e.code))
   }
 }
 
@@ -189,12 +212,14 @@ async function submit() {
 
   working.value = true
   try {
-    const r = await applyStock(selected.value.id, op.value, v, auth.actor, memoVal, reason.value)
+    const skuId = selected.value.id
+    const r = await applyStock(skuId, op.value, v, auth.actor, memoVal, reason.value)
     toast.success(`${cfg.value.title} 완료 · 재고 ${r.before} → ${r.after}개`)
     // 로컬 반영
-    const idx = list.value.findIndex((s) => s.id === selected.value.id)
-    if (idx > -1) list.value[idx] = { ...list.value[idx], qty: r.after }
-    movements.value = await listMovements(selected.value.id, 6)
+    if (selectedSku.value && selectedSku.value.id === skuId) selectedSku.value = { ...selectedSku.value, qty: r.after }
+    const idx = rows.value.findIndex((s) => s.id === skuId)
+    if (idx > -1) rows.value[idx] = { ...rows.value[idx], qty: r.after }
+    movements.value = await listMovements(skuId, 6)
     if (cfg.value.mode === 'add') qty.value = 1
   } catch (e) {
     toast.error(e.message || '처리 실패')
@@ -233,30 +258,34 @@ const fmtTime = fmtDateTime
           </select>
           <input
             v-model="search"
-            class="input w-full flex-1 sm:ml-auto sm:w-auto"
+            class="input w-full flex-1 sm:w-auto"
             placeholder="SKU코드/상품명 검색 (코드 입력 후 Enter=바로선택)"
             @keyup.enter="pickByCode"
           />
+          <select v-model="pageSize" class="input w-auto sm:ml-auto">
+            <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
+          </select>
         </div>
         <div class="max-h-[60vh] overflow-y-auto scrollbar-slim">
           <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
-          <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">SKU가 없습니다.</div>
+          <div v-else-if="!rows.length" class="p-10 text-center text-sm text-slate-400">SKU가 없습니다.</div>
           <button
-            v-for="s in filtered"
+            v-for="s in rows"
             :key="s.id"
             class="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-4 py-2.5 text-left hover:bg-slate-50"
-            :class="selectedId === s.id ? 'bg-brand-50' : ''"
-            @click="selectedId = s.id"
+            :class="selected?.id === s.id ? 'bg-brand-50' : ''"
+            @click="selectSku(s)"
           >
             <img :src="resolveImage(s)" class="h-10 w-10 shrink-0 rounded-lg border border-slate-100 object-cover" alt="" />
             <div class="min-w-0 flex-1">
               <span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span>
               <span class="ml-1 text-sm font-medium text-slate-700">{{ s.productName }}</span>
-              <p class="truncate text-xs text-slate-400">{{ s.spec }} · {{ s.pathLabel }}</p>
+              <p class="truncate text-xs text-slate-400">{{ specText(s) ? specText(s) + ' · ' : '' }}{{ s.pathLabel }}</p>
             </div>
             <span class="shrink-0 text-sm font-semibold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-600'">{{ s.qty }}개</span>
           </button>
         </div>
+        <Pager v-if="total" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
       </div>
 
       <!-- 작업 패널 -->
@@ -266,7 +295,7 @@ const fmtTime = fmtDateTime
           <template v-else>
             <img :src="resolveImage(selected)" class="mb-3 h-48 w-full cursor-zoom-in rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="" title="클릭하면 크게 보기" @click="imgModal = true" />
             <p class="font-mono text-lg font-bold text-slate-800">{{ selected.code }}</p>
-            <p class="text-sm text-slate-600">{{ selected.productName }} <span v-if="selected.spec" class="text-slate-400">· {{ selected.spec }}</span></p>
+            <p class="text-sm text-slate-600">{{ selected.productName }} <span v-if="specText(selected)" class="text-slate-400">· {{ specText(selected) }}</span></p>
             <p class="text-xs text-slate-400">{{ selected.pathLabel }}</p>
 
             <div class="my-4 rounded-lg bg-slate-50 py-3 text-center">

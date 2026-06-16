@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import { makeQrDataUrl, buildSkuUrl } from '@/services/qr'
 import { useToast } from '@/composables/useToast'
+import { specText } from '@/utils/sku'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -56,7 +57,7 @@ function download() {
         <img v-else :src="qr" alt="QR" class="h-44 w-44" />
       </div>
       <p class="font-mono text-lg font-bold text-slate-800">{{ sku.code }}</p>
-      <p class="mt-0.5 text-sm text-slate-600">{{ sku.productName }}<span v-if="sku.spec"> · {{ sku.spec }}</span></p>
+      <p class="mt-0.5 text-sm text-slate-600">{{ sku.productName }}<span v-if="specText(sku)"> · {{ specText(sku) }}</span></p>
       <p class="mt-0.5 text-xs text-slate-400">{{ sku.pathLabel }}</p>
       <p class="mt-1 text-xs font-medium text-slate-600">📍 {{ locText }}<span v-if="sku.storageLocationCode" class="font-mono text-slate-400"> ({{ sku.storageLocationCode }})</span></p>
       <p class="mt-1 text-xs text-slate-500">현재 재고 {{ sku.qty }}개</p>
