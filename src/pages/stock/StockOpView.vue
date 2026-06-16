@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { skus, complexes, applyStock, listMovements } from '@/services/db'
+import { skus, complexes, storageLocations, applyStock, listMovements } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -35,10 +35,50 @@ const memo = ref('')
 const working = ref(false)
 const movements = ref([])
 
+// 보관위치(재고조정용) — 단지(SKU 고정) › 구역 › 상세구역 › 보관위치 연쇄 선택
+const storageLocs = ref([])
+const locId = ref('')
+const fZone = ref('')
+const fSub = ref('')
+const savingLoc = ref(false)
+// 선택된 SKU의 단지에 속한 보관위치
+const locForComplex = computed(() => storageLocs.value.filter((l) => l.complexId === selected.value?.complexId))
+// 구역/상세구역 후보는 보관위치 데이터에서 추출(추가 조회 없음)
+const zoneChoices = computed(() => {
+  const m = new Map()
+  locForComplex.value.forEach((l) => l.zoneId && m.set(l.zoneId, l.zoneName))
+  return [...m].map(([id, name]) => ({ id, name }))
+})
+const subChoices = computed(() => {
+  const m = new Map()
+  locForComplex.value.forEach((l) => {
+    if (l.zoneId === fZone.value && l.subZoneId) m.set(l.subZoneId, l.subZoneName)
+  })
+  return [...m].map(([id, name]) => ({ id, name }))
+})
+// 연쇄 필터가 적용된 보관위치 목록
+const locOptions = computed(() =>
+  locForComplex.value.filter(
+    (l) => (!fZone.value || l.zoneId === fZone.value) && (!fSub.value || l.subZoneId === fSub.value)
+  )
+)
+// 사용자가 직접 바꿀 때만 하위 선택 정리 (사전 세팅 시엔 건드리지 않음)
+function onZoneChange() {
+  fSub.value = ''
+  if (locId.value && !locOptions.value.find((l) => l.id === locId.value)) locId.value = ''
+}
+function onSubChange() {
+  if (locId.value && !locOptions.value.find((l) => l.id === locId.value)) locId.value = ''
+}
+
 async function load() {
   loading.value = true
   try {
-    ;[list.value, complexList.value] = await Promise.all([skus.list(), complexes.list()])
+    ;[list.value, complexList.value, storageLocs.value] = await Promise.all([
+      skus.list(),
+      complexes.list(),
+      storageLocations.list(),
+    ])
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))
   } finally {
@@ -68,8 +108,45 @@ watch(selected, async (s) => {
   else qty.value = 1
   memo.value = ''
   reason.value = ''
+  fZone.value = s?.zoneId || ''
+  fSub.value = s?.subZoneId || ''
+  locId.value = s?.storageLocationId || ''
   movements.value = s ? await listMovements(s.id, 6) : []
 })
+
+async function saveLocation(clear = false) {
+  if (!selected.value) return
+  savingLoc.value = true
+  try {
+    let loc = { storageLocationId: '', storageLocationCode: '', zoneId: '', zoneName: '', subZoneId: '', subZoneName: '', locationLabel: '' }
+    if (!clear) {
+      const sl = storageLocs.value.find((x) => x.id === locId.value)
+      if (!sl) {
+        savingLoc.value = false
+        return toast.error('보관위치를 선택하세요.')
+      }
+      loc = {
+        storageLocationId: sl.id,
+        storageLocationCode: sl.code,
+        zoneId: sl.zoneId || '',
+        zoneName: sl.zoneName || '',
+        subZoneId: sl.subZoneId || '',
+        subZoneName: sl.subZoneName || '',
+        locationLabel: sl.locationLabel || sl.name || '',
+      }
+    } else {
+      locId.value = ''
+    }
+    await skus.setLocation(selected.value.id, loc)
+    const idx = list.value.findIndex((s) => s.id === selected.value.id)
+    if (idx > -1) list.value[idx] = { ...list.value[idx], ...loc }
+    toast.success(clear ? '위치가 삭제되었습니다.' : '위치가 저장되었습니다.')
+  } catch (e) {
+    toast.error('위치 저장 실패: ' + (e.message || e.code))
+  } finally {
+    savingLoc.value = false
+  }
+}
 
 // SKU 코드 직접 입력(스캐너) → Enter 로 선택
 function pickByCode() {
@@ -178,6 +255,37 @@ function fmtTime(ts) {
                 <option value="">사유 선택</option>
                 <option v-for="r in REASONS" :key="r" :value="r">{{ r }}</option>
               </select>
+            </div>
+
+            <!-- 보관위치 지정: 단지(고정) › 구역 › 상세구역 › 보관위치 연쇄 선택 -->
+            <div v-if="op === 'adjust'" class="mb-3 rounded-lg border border-slate-200 p-3">
+              <p class="mb-2 text-xs font-semibold text-slate-500">보관위치 지정</p>
+              <div class="mb-2 rounded bg-slate-50 px-2 py-1 text-[11px] text-slate-500">단지: <b>{{ selected.complexName }}</b> <span class="text-slate-400">(SKU 기준 고정)</span></div>
+              <div class="grid grid-cols-2 gap-2">
+                <select v-model="fZone" class="input" @change="onZoneChange">
+                  <option value="">구역 전체</option>
+                  <option v-for="z in zoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option>
+                </select>
+                <select v-model="fSub" class="input" :disabled="!fZone" @change="onSubChange">
+                  <option value="">상세구역 전체</option>
+                  <option v-for="s in subChoices" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+              </div>
+              <select v-model="locId" class="input mt-2">
+                <option value="">보관위치 선택</option>
+                <option v-for="l in locOptions" :key="l.id" :value="l.id">
+                  {{ l.code }} · {{ [l.zoneName, l.subZoneName, l.name].filter(Boolean).join(' › ') || '단지 전체' }}
+                </option>
+              </select>
+              <p v-if="!locForComplex.length" class="mt-1 text-[11px] text-amber-600">이 단지에 등록된 보관위치가 없습니다. 보관위치관리에서 먼저 등록하세요.</p>
+              <div class="mt-2 flex gap-2">
+                <button class="btn-ghost btn-sm flex-1" :disabled="savingLoc" @click="saveLocation(false)">위치 저장</button>
+                <button class="btn-ghost btn-sm text-rose-600" :disabled="savingLoc || !selected.storageLocationId" @click="saveLocation(true)">위치 삭제</button>
+              </div>
+              <p v-if="selected.locationLabel || selected.storageLocationCode" class="mt-1.5 text-[11px] text-slate-400">
+                현재 위치: {{ selected.complexName }}<span v-if="selected.locationLabel"> › {{ selected.locationLabel }}</span>
+                <span v-if="selected.storageLocationCode" class="font-mono"> ({{ selected.storageLocationCode }})</span>
+              </p>
             </div>
 
             <label class="label">메모 (선택)</label>

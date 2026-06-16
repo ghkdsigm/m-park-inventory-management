@@ -20,6 +20,11 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['qty', 'status', 'totalIn', 'totalOut', 'lastMovedBy', 'lastMovedAt', 'updatedAt']);
     }
+    // 연한 교체 처리 시 변경 가능한 필드 (정책 설정은 admin 만, 교체 실행은 로그인 사용자)
+    function onlyLifecycleFields() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['lastReplacedAt', 'nextReplaceAt', 'lastReplacedBy', 'updatedAt']);
+    }
 
     // 사용자 프로필
     match /users/{uid} {
@@ -41,15 +46,27 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 위치 (구역/상세구역/보관위치) — 관리: admin
+    match /zones/{id}            { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /subZones/{id}         { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /storageLocations/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+
     // SKU: 생성/삭제/메타수정은 admin, 재고수량 변경은 로그인 사용자 허용
     match /skus/{id} {
       allow read: if isSignedIn();
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (isSignedIn() && onlyStockFields());
+      allow update: if isAdmin() || (isSignedIn() && (onlyStockFields() || onlyLifecycleFields()));
     }
 
     // 재고 원장 (감사 로그): 본인 이름으로만 생성, 수정/삭제 불가
     match /stockMovements/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.byUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // 연한(주기 교체) 이력: 본인 이름으로만 생성, 수정/삭제 불가
+    match /lifecycleLogs/{id} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.byUid == request.auth.uid;
       allow update, delete: if false;

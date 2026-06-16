@@ -3,12 +3,14 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { complexes, categories, productCodes, productDetails } from '@/services/db'
 import { useToast } from '@/composables/useToast'
+import { useBusy } from '@/composables/useBusy'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 
 const route = useRoute()
 const toast = useToast()
+const { busy: saving, run } = useBusy()
 const confirm = ref(null)
 
 // 기준정보 4단계 메타 (idField/nameField = 다른 컬렉션이 이 단계를 참조할 때 쓰는 비정규화 필드)
@@ -263,7 +265,7 @@ async function remove(item) {
       </div>
       <template #footer>
         <button class="btn-ghost" @click="modal = false">취소</button>
-        <button class="btn-primary" @click="save">{{ editing ? '수정' : '생성' }}</button>
+        <button class="btn-primary" :disabled="saving" @click="run(save)">{{ editing ? '수정' : '생성' }}</button>
       </template>
     </BaseModal>
 

@@ -75,6 +75,28 @@ const diffSum = computed(() => changed.value.reduce((a, s) => a + diffOf(s), 0))
 function attrLine(s) {
   return [s.spec, s.color, s.releaseYear && `출시 ${s.releaseYear}`, s.purpose].filter(Boolean).join(' · ')
 }
+
+// 위치 검증 선택
+const locSel = ref(new Set())
+function toggleLoc(id) {
+  locSel.value.has(id) ? locSel.value.delete(id) : locSel.value.add(id)
+  locSel.value = new Set(locSel.value)
+}
+async function verifyLocations() {
+  if (!locSel.value.size) return toast.error('검증할 항목을 선택하세요.')
+  working.value = true
+  try {
+    const ids = [...locSel.value]
+    for (const id of ids) await skus.verifyLocation(id, auth.actor)
+    toast.success(`위치 ${ids.length}건 검증 확정`)
+    locSel.value = new Set()
+    await load()
+  } catch (e) {
+    toast.error('위치 검증 실패: ' + (e.message || e.code))
+  } finally {
+    working.value = false
+  }
+}
 function resetCounts() {
   list.value.forEach((s) => (counts[s.id] = s.qty))
   toast.info('실사수량을 시스템 재고로 초기화했습니다.')
@@ -110,6 +132,7 @@ async function confirmAudit() {
   <div>
     <PageHeader title="재고실사" subtitle="실물을 카운트해 실사수량을 입력하고, 시스템 재고와의 차이를 일괄 확정합니다.">
       <button class="btn-ghost" :disabled="working" @click="resetCounts">초기화</button>
+      <button class="btn-ghost" :disabled="working || !locSel.size" @click="verifyLocations">위치 검증 ({{ locSel.size }})</button>
       <button class="btn-primary" :disabled="working || !changed.length" @click="confirmAudit">
         {{ working ? '처리 중…' : `실사 확정 (${changed.length})` }}
       </button>
@@ -134,10 +157,11 @@ async function confirmAudit() {
     <div class="card overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
       <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">대상 SKU가 없습니다.</div>
-      <table v-else class="w-full min-w-[680px] text-sm">
+      <table v-else class="w-full min-w-[820px] text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
             <th class="px-3 py-2.5 font-semibold">SKU / 상품</th>
+            <th class="px-3 py-2.5 font-semibold">위치 (검증)</th>
             <th class="px-3 py-2.5 text-right font-semibold">시스템</th>
             <th class="px-3 py-2.5 text-center font-semibold">실사수량</th>
             <th class="px-3 py-2.5 text-right font-semibold">차이</th>
@@ -154,6 +178,16 @@ async function confirmAudit() {
                   <p class="truncate text-[11px] text-slate-400">{{ attrLine(s) }}</p>
                 </div>
               </div>
+            </td>
+            <td class="px-3 py-2">
+              <label class="flex items-center gap-1.5">
+                <input type="checkbox" class="rounded border-slate-300" :checked="locSel.has(s.id)" @change="toggleLoc(s.id)" />
+                <span class="min-w-0">
+                  <span v-if="s.locationLabel" class="block truncate text-xs text-slate-600">📍 {{ s.locationLabel }}</span>
+                  <span v-else class="block text-xs text-slate-300">위치 미지정</span>
+                  <span v-if="s.locationVerifiedAt" class="block text-[10px] text-emerald-600">✓ 검증됨</span>
+                </span>
+              </label>
             </td>
             <td class="px-3 py-2 text-right font-semibold text-slate-500">{{ s.qty }}</td>
             <td class="px-3 py-2 text-center">

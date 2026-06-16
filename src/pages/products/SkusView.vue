@@ -3,14 +3,17 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { skus, products, complexes } from '@/services/db'
 import { makeQrBatch } from '@/services/qr'
 import { useToast } from '@/composables/useToast'
+import { useBusy } from '@/composables/useBusy'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import QrModal from '@/components/qr/QrModal.vue'
 import ImageUploader from '@/components/ui/ImageUploader.vue'
 import { resolveImage } from '@/utils/image'
+import { addCycle, fmtDate, CYCLE_UNITS } from '@/utils/date'
 
 const toast = useToast()
+const { busy: saving, run } = useBusy()
 const confirm = ref(null)
 
 const loading = ref(true)
@@ -59,6 +62,15 @@ const editing = ref(null)
 const blankForm = () => ({
   productId: '', code: '', spec: '', color: '', releaseYear: '', productionYear: '', purpose: '',
   imageUrl: '', price: 0, qty: 0, safetyStock: 0,
+  // 연한관리
+  lifecycleEnabled: false, cycleValue: 0, cycleUnit: 'month', lastReplacedAt: '', replaceReason: '', lifecycleNote: '',
+})
+
+// 폼 기준 다음 교체예정일 미리보기
+const nextReplacePreview = computed(() => {
+  if (!form.lifecycleEnabled || !Number(form.cycleValue)) return ''
+  const base = form.lastReplacedAt ? new Date(form.lastReplacedAt) : new Date()
+  return fmtDate(addCycle(base, form.cycleValue, form.cycleUnit))
 })
 const form = reactive(blankForm())
 
@@ -90,6 +102,12 @@ function openEdit(s) {
     price: s.price || 0,
     qty: s.qty || 0,
     safetyStock: s.safetyStock || 0,
+    lifecycleEnabled: !!s.lifecycleEnabled,
+    cycleValue: s.cycleValue || 0,
+    cycleUnit: s.cycleUnit || 'month',
+    lastReplacedAt: fmtDate(s.lastReplacedAt),
+    replaceReason: s.replaceReason || '',
+    lifecycleNote: s.lifecycleNote || '',
   })
   modal.value = true
 }
@@ -109,6 +127,17 @@ async function save() {
   if (!hasAnyAttr())
     return toast.error('규격·색상·출시년도·생산년도·구매목적·단가·재고·안전재고 중 최소 1개는 입력해야 합니다.')
   const product = productList.value.find((p) => p.id === form.productId)
+  // 연한관리 공통 페이로드 (다음 교체예정일 계산)
+  const baseDate = form.lastReplacedAt ? new Date(form.lastReplacedAt) : null
+  const lifecycle = {
+    lifecycleEnabled: !!form.lifecycleEnabled,
+    cycleValue: Number(form.cycleValue) || 0,
+    cycleUnit: form.cycleUnit || 'month',
+    lastReplacedAt: baseDate,
+    nextReplaceAt: form.lifecycleEnabled && Number(form.cycleValue) ? addCycle(baseDate || new Date(), form.cycleValue, form.cycleUnit) : null,
+    replaceReason: form.replaceReason.trim(),
+    lifecycleNote: form.lifecycleNote.trim(),
+  }
   try {
     if (editing.value) {
       // 재고수량은 입출고로만 변경, 코드는 수정 불가 (메타만 수정)
@@ -121,6 +150,7 @@ async function save() {
         imageUrl: form.imageUrl || '',
         price: Number(form.price) || 0,
         safetyStock: Number(form.safetyStock) || 0,
+        ...lifecycle,
       })
       toast.success('SKU가 수정되었습니다.')
     } else {
@@ -131,6 +161,7 @@ async function save() {
         productionYear: form.productionYear,
         purpose: form.purpose.trim(),
         imageUrl: form.imageUrl || '',
+        ...lifecycle,
         productMainImageUrl: product.mainImageUrl || '',
         price: form.price,
         qty: form.qty,
@@ -279,6 +310,7 @@ const statusMeta = {
             <p class="font-mono font-bold text-black">{{ item.code }}</p>
             <p class="truncate text-slate-700">{{ item.productName }}</p>
             <p class="text-slate-500">{{ item.spec }}</p>
+            <p class="break-words font-semibold text-black">📍 {{ item.locationLabel ? item.complexName + ' > ' + item.locationLabel : (item.complexName || '위치 미지정') }}</p>
             <p class="mt-0.5 break-words text-slate-400">{{ item.pathLabel }}</p>
           </div>
         </div>
@@ -339,6 +371,41 @@ const statusMeta = {
           <ImageUploader v-model="form.imageUrl" prefix="skus" size="sm" />
           <p class="mt-1 text-[11px] text-slate-400">없으면 상품 대표 이미지가 자동 표시됩니다.</p>
         </div>
+
+        <!-- 연한관리 (주기 교체) -->
+        <div class="rounded-lg border border-slate-200 p-3">
+          <label class="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input v-model="form.lifecycleEnabled" type="checkbox" class="rounded border-slate-300" />
+            연한관리(주기 교체) 사용
+          </label>
+          <div v-if="form.lifecycleEnabled" class="mt-3 space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="label">교체주기</label>
+                <div class="flex gap-2">
+                  <input v-model.number="form.cycleValue" type="number" min="0" class="input" />
+                  <select v-model="form.cycleUnit" class="input w-24">
+                    <option v-for="u in CYCLE_UNITS" :key="u.v" :value="u.v">{{ u.t }}</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label class="label">기준일(설치/최근교체)</label>
+                <input v-model="form.lastReplacedAt" type="date" class="input" />
+              </div>
+            </div>
+            <div>
+              <label class="label">교체 사유/유형</label>
+              <input v-model="form.replaceReason" class="input" placeholder="예: 법정점검 / 마모 / 위생 / 배터리" />
+            </div>
+            <div>
+              <label class="label">비고</label>
+              <input v-model="form.lifecycleNote" class="input" />
+            </div>
+            <p v-if="nextReplacePreview" class="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">다음 교체 예정일: <b>{{ nextReplacePreview }}</b></p>
+          </div>
+        </div>
+
         <div v-if="!editing">
           <label class="label">초기 재고수량</label>
           <input v-model.number="form.qty" type="number" min="0" class="input" />
@@ -347,7 +414,7 @@ const statusMeta = {
       </div>
       <template #footer>
         <button class="btn-ghost" @click="modal = false">취소</button>
-        <button class="btn-primary" @click="save">{{ editing ? '수정' : '생성' }}</button>
+        <button class="btn-primary" :disabled="saving" @click="run(save)">{{ editing ? '수정' : '생성' }}</button>
       </template>
     </BaseModal>
 

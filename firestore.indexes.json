@@ -1,13 +1,4 @@
 {
-  "indexes": [
-    {
-      "collectionGroup": "stockMovements",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "skuId", "order": "ASCENDING" },
-        { "fieldPath": "at", "order": "DESCENDING" }
-      ]
-    }
-  ],
+  "indexes": [],
   "fieldOverrides": []
 }

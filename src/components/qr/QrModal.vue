@@ -1,12 +1,21 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import { makeQrDataUrl, buildSkuUrl } from '@/services/qr'
 import { useToast } from '@/composables/useToast'
 
 const props = defineProps({
   modelValue: Boolean,
-  sku: Object, // { code, productName, spec, qty, pathLabel }
+  sku: Object, // { code, productName, spec, qty, pathLabel, complexName, locationLabel, storageLocationCode }
+})
+
+// 위치 표시 문자열 (단지 › 구역 › 상세구역 › 명칭)
+const locText = computed(() => {
+  const s = props.sku
+  if (!s) return ''
+  if (s.locationLabel) return `${s.complexName} › ${s.locationLabel}`
+  if (s.complexName) return `${s.complexName} · 위치 미지정`
+  return '위치 미지정'
 })
 const emit = defineEmits(['update:modelValue'])
 const toast = useToast()
@@ -49,6 +58,7 @@ function download() {
       <p class="font-mono text-lg font-bold text-slate-800">{{ sku.code }}</p>
       <p class="mt-0.5 text-sm text-slate-600">{{ sku.productName }}<span v-if="sku.spec"> · {{ sku.spec }}</span></p>
       <p class="mt-0.5 text-xs text-slate-400">{{ sku.pathLabel }}</p>
+      <p class="mt-1 text-xs font-medium text-slate-600">📍 {{ locText }}<span v-if="sku.storageLocationCode" class="font-mono text-slate-400"> ({{ sku.storageLocationCode }})</span></p>
       <p class="mt-1 text-xs text-slate-500">현재 재고 {{ sku.qty }}개</p>
 
       <div class="mt-3 flex items-center justify-center gap-2 rounded-lg bg-slate-50 px-3 py-2">

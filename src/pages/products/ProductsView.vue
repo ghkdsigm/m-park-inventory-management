@@ -2,6 +2,7 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { products, complexes, categories, productCodes, productDetails } from '@/services/db'
 import { useToast } from '@/composables/useToast'
+import { useBusy } from '@/composables/useBusy'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -10,6 +11,7 @@ import { uploadImage, deleteImageByUrl } from '@/services/storage'
 import { resolveProductImage, NO_IMAGE } from '@/utils/image'
 
 const toast = useToast()
+const { busy: saving, run } = useBusy()
 const confirm = ref(null)
 
 // 기준정보 체인 (단지만 필수)
@@ -296,7 +298,7 @@ async function remove(p) {
       </div>
       <template #footer>
         <button class="btn-ghost" @click="modal = false">취소</button>
-        <button class="btn-primary" @click="save">{{ editing ? '수정' : '등록' }}</button>
+        <button class="btn-primary" :disabled="saving" @click="run(save)">{{ editing ? '수정' : '등록' }}</button>
       </template>
     </BaseModal>
 

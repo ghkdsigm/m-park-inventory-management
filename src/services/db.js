@@ -13,7 +13,9 @@ import {
   limit,
   serverTimestamp,
   runTransaction,
+  writeBatch,
 } from 'firebase/firestore'
+import { addCycle } from '@/utils/date'
 
 /**
  * 엠파크 WMS 데이터 접근 계층.
@@ -111,6 +113,87 @@ export const MASTER = {
   productDetails: { board: productDetails, label: '제품상세코드', col: 'productDetails', parent: 'productCodes', fk: 'productCodeId', auto: true },
 }
 
+/* ===================== 위치 (단지 > 구역 > 상세구역) ===================== */
+export const zones = {
+  async listAll() {
+    return (await getDocs(query(colRef('zones'), orderBy('createdAt', 'asc')))).docs.map(snap)
+  },
+  async listByComplex(complexId) {
+    const r = await getDocs(query(colRef('zones'), where('complexId', '==', complexId)))
+    return r.docs.map(snap).sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0))
+  },
+  create(data) {
+    return addDoc(colRef('zones'), {
+      name: data.name.trim(),
+      complexId: data.complexId,
+      complexName: data.complexName || '',
+      createdAt: serverTimestamp(),
+    })
+  },
+  update(id, data) {
+    return updateDoc(doc(db, 'zones', id), { ...data, updatedAt: serverTimestamp() })
+  },
+  // 구역 삭제 시 하위 상세구역도 함께 삭제
+  async remove(id) {
+    const subs = await getDocs(query(colRef('subZones'), where('zoneId', '==', id)))
+    const batch = writeBatch(db)
+    subs.docs.forEach((d) => batch.delete(d.ref))
+    batch.delete(doc(db, 'zones', id))
+    await batch.commit()
+  },
+}
+
+export const subZones = {
+  async listAll() {
+    return (await getDocs(query(colRef('subZones'), orderBy('createdAt', 'asc')))).docs.map(snap)
+  },
+  async listByZone(zoneId) {
+    const r = await getDocs(query(colRef('subZones'), where('zoneId', '==', zoneId)))
+    return r.docs.map(snap).sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0))
+  },
+  create(data) {
+    return addDoc(colRef('subZones'), {
+      name: data.name.trim(),
+      zoneId: data.zoneId,
+      zoneName: data.zoneName || '',
+      complexId: data.complexId,
+      complexName: data.complexName || '',
+      createdAt: serverTimestamp(),
+    })
+  },
+  update(id, data) {
+    return updateDoc(doc(db, 'subZones', id), { ...data, updatedAt: serverTimestamp() })
+  },
+  remove(id) {
+    return deleteDoc(doc(db, 'subZones', id))
+  },
+}
+
+/**
+ * 보관위치 (실질적 최종 위치) — 단지 필수, 구역/상세구역 선택.
+ * 코드 자동(LOC-000001). SKU에 이 위치를 지정(재고조정)한다.
+ */
+export const storageLocations = {
+  async list() {
+    return (await getDocs(query(colRef('storageLocations'), orderBy('createdAt', 'desc')))).docs.map(snap)
+  },
+  async listByComplex(complexId) {
+    const r = await getDocs(query(colRef('storageLocations'), where('complexId', '==', complexId)))
+    return r.docs.map(snap).sort((a, b) => (a.code > b.code ? 1 : -1))
+  },
+  create(data) {
+    const { code, ...rest } = data
+    return createWithSeq('storageLocations', 'storageLocations', 'LOC', 6, rest)
+  },
+  update(id, data) {
+    const { code, ...rest } = data
+    return updateDoc(doc(db, 'storageLocations', id), { ...rest, updatedAt: serverTimestamp() })
+  },
+  remove(id) {
+    return deleteDoc(doc(db, 'storageLocations', id))
+  },
+}
+
 /* ============================= 상품 ============================= */
 export const products = {
   async list() {
@@ -202,6 +285,22 @@ export const skus = {
         productCodeId: data.productCodeId || null,
         productDetailId: data.productDetailId || null,
         pathLabel: data.pathLabel || '',
+        // 보관위치 - 재고조정에서 설정
+        storageLocationId: data.storageLocationId || '',
+        storageLocationCode: data.storageLocationCode || '',
+        zoneId: data.zoneId || '',
+        zoneName: data.zoneName || '',
+        subZoneId: data.subZoneId || '',
+        subZoneName: data.subZoneName || '',
+        locationLabel: data.locationLabel || '',
+        // 연한관리(주기 교체)
+        lifecycleEnabled: !!data.lifecycleEnabled,
+        cycleValue: Number(data.cycleValue) || 0,
+        cycleUnit: data.cycleUnit || 'month',
+        lastReplacedAt: data.lastReplacedAt || null,
+        nextReplaceAt: data.nextReplaceAt || null,
+        replaceReason: data.replaceReason || '',
+        lifecycleNote: data.lifecycleNote || '',
         createdAt: serverTimestamp(),
       })
       return { id: skuRef.id, code }
@@ -214,6 +313,27 @@ export const skus = {
   },
   remove(id) {
     return deleteDoc(doc(db, 'skus', id))
+  },
+  /** SKU 보관위치 설정/삭제 (재고조정에서 사용). loc 비우면 위치 삭제 */
+  setLocation(skuId, loc) {
+    return updateDoc(doc(db, 'skus', skuId), {
+      storageLocationId: loc.storageLocationId || '',
+      storageLocationCode: loc.storageLocationCode || '',
+      zoneId: loc.zoneId || '',
+      zoneName: loc.zoneName || '',
+      subZoneId: loc.subZoneId || '',
+      subZoneName: loc.subZoneName || '',
+      locationLabel: loc.locationLabel || '',
+      updatedAt: serverTimestamp(),
+    })
+  },
+  /** SKU 위치 확정/검증 (재고실사에서 사용) */
+  verifyLocation(skuId, actor) {
+    return updateDoc(doc(db, 'skus', skuId), {
+      locationVerifiedAt: serverTimestamp(),
+      locationVerifiedBy: actor.name,
+      updatedAt: serverTimestamp(),
+    })
   },
 }
 
@@ -325,8 +445,12 @@ export async function applyAuditBatch(items, actor, memo = '') {
 }
 
 export async function listMovements(skuId, max = 100) {
-  const q = query(colRef('stockMovements'), where('skuId', '==', skuId), orderBy('at', 'desc'), limit(max))
-  return (await getDocs(q)).docs.map(snap)
+  // 복합 인덱스 불필요: where 단일 필드로 가져와 클라이언트에서 정렬/슬라이스
+  const r = await getDocs(query(colRef('stockMovements'), where('skuId', '==', skuId)))
+  return r.docs
+    .map(snap)
+    .sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0))
+    .slice(0, max)
 }
 
 /** 최근 입출고 원장 (화면 조회 기본 100건). 추가 필터는 클라이언트에서 처리 */
@@ -343,6 +467,52 @@ export async function getDailyStats(days = 7) {
 export async function getTodayStats() {
   const d = await getDoc(doc(db, 'dailyStats', dateKey()))
   return d.exists() ? snap(d) : null
+}
+
+/* ===================== 연한관리 (주기 교체) ===================== */
+/**
+ * SKU 교체 처리: 최근교체일=지금, 다음교체예정일 재계산, 이력 기록.
+ * (현장 QR/연한관리 화면에서 사용 — 로그인 사용자 가능)
+ */
+export async function replaceLifecycle(skuId, actor, reason = '') {
+  const ref = doc(db, 'skus', skuId)
+  return runTransaction(db, async (tx) => {
+    const d = await tx.get(ref)
+    if (!d.exists()) throw new Error('SKU를 찾을 수 없습니다.')
+    const s = d.data()
+    const now = new Date()
+    const next = s.lifecycleEnabled ? addCycle(now, s.cycleValue, s.cycleUnit) : null
+    tx.update(ref, {
+      lastReplacedAt: now,
+      nextReplaceAt: next,
+      lastReplacedBy: actor.name,
+      updatedAt: serverTimestamp(),
+    })
+    const logRef = doc(colRef('lifecycleLogs'))
+    tx.set(logRef, {
+      skuId,
+      skuCode: s.code,
+      productName: s.productName || '',
+      replacedAt: now,
+      nextReplaceAt: next,
+      reason: reason?.trim() || s.replaceReason || '',
+      pathLabel: s.pathLabel || '',
+      complexName: s.complexName || '',
+      byUid: actor.uid,
+      byName: actor.name,
+      at: serverTimestamp(),
+    })
+    return { replacedAt: now, nextReplaceAt: next }
+  })
+}
+
+export async function listLifecycleLogs(skuId, max = 50) {
+  // 복합 인덱스 불필요: where 단일 필드 + 클라이언트 정렬
+  const r = await getDocs(query(colRef('lifecycleLogs'), where('skuId', '==', skuId)))
+  return r.docs
+    .map(snap)
+    .sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0))
+    .slice(0, max)
 }
 
 /* =============================== 사용자/역할 =============================== */

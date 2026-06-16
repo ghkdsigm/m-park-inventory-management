@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { complexes, products, skus, recentMovements, getTodayStats } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
+import { lifecycleStatus, daysUntil, fmtDate } from '@/utils/date'
 import PageHeader from '@/components/ui/PageHeader.vue'
 
 const router = useRouter()
@@ -12,6 +13,8 @@ const stat = ref({ complexes: 0, products: 0, skus: 0, totalQty: 0, low: 0, out:
 const lowList = ref([])
 const moves = ref([])
 const today = ref(null)
+const lifeStat = ref({ soon: 0, over: 0 })
+const lifeList = ref([])
 
 const typeLabel = { in: '입고', out: '출고', adjust: '조정', audit: '실사' }
 const typeColor = { in: 'bg-emerald-500', out: 'bg-sky-500', adjust: 'bg-amber-500', audit: 'bg-violet-500' }
@@ -36,6 +39,17 @@ onMounted(async () => {
     }
     lowList.value = sk.filter((s) => s.status === 'low' || s.status === 'out').slice(0, 6)
     moves.value = mv
+    const life = sk
+      .filter((s) => s.lifecycleEnabled)
+      .map((s) => ({ ...s, _st: lifecycleStatus(s.nextReplaceAt), _d: daysUntil(s.nextReplaceAt) }))
+    lifeStat.value = {
+      soon: life.filter((s) => s._st === 'soon').length,
+      over: life.filter((s) => s._st === 'over').length,
+    }
+    lifeList.value = life
+      .filter((s) => s._st === 'soon' || s._st === 'over')
+      .sort((a, b) => (a._d ?? 1e9) - (b._d ?? 1e9))
+      .slice(0, 6)
   } finally {
     loading.value = false
   }
@@ -89,6 +103,28 @@ function fmtTime(ts) {
           <div class="rounded-lg bg-slate-50 py-2"><p class="text-xs text-slate-500">입고수량</p><p class="text-lg font-bold text-slate-700">+{{ today?.inQty || 0 }}</p></div>
           <div class="rounded-lg bg-slate-50 py-2"><p class="text-xs text-slate-500">출고수량</p><p class="text-lg font-bold text-slate-700">-{{ today?.outQty || 0 }}</p></div>
         </div>
+      </div>
+
+      <!-- 교체 임박·초과 (연한관리) -->
+      <div class="mt-4 card p-5">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="text-sm font-bold text-slate-700">교체 임박 · 초과 <span class="ml-1 text-xs font-normal text-slate-400">(연한관리)</span></h3>
+          <button class="text-xs text-brand-600" @click="router.push({ name: 'lifecycle' })">전체보기</button>
+        </div>
+        <div class="mb-3 grid grid-cols-2 gap-2 text-center sm:max-w-xs">
+          <div class="rounded-lg bg-amber-50 py-2"><p class="text-xs text-amber-600">임박(D-30)</p><p class="text-lg font-bold text-amber-700">{{ lifeStat.soon }}</p></div>
+          <div class="rounded-lg bg-rose-50 py-2"><p class="text-xs text-rose-600">초과</p><p class="text-lg font-bold text-rose-700">{{ lifeStat.over }}</p></div>
+        </div>
+        <div v-if="!lifeList.length" class="py-4 text-center text-sm text-slate-300">교체 임박/초과 항목이 없습니다 👍</div>
+        <ul v-else class="divide-y divide-slate-50 text-sm">
+          <li v-for="s in lifeList" :key="s.id" class="flex items-center justify-between py-2">
+            <div class="min-w-0">
+              <p class="truncate font-medium text-slate-700"><span class="font-mono text-xs text-brand-600">{{ s.code }}</span> {{ s.productName }}</p>
+              <p class="truncate text-xs text-slate-400">다음 교체 {{ fmtDate(s.nextReplaceAt) || '-' }}</p>
+            </div>
+            <span class="badge shrink-0" :class="s._st === 'over' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'">{{ s._st === 'over' ? -s._d + '일 초과' : 'D-' + s._d }}</span>
+          </li>
+        </ul>
       </div>
 
       <div class="mt-4 grid gap-4 lg:grid-cols-2">

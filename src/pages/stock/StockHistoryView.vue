@@ -3,11 +3,20 @@ import { ref, computed, onMounted } from 'vue'
 import { recentMovements, complexes } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import BaseModal from '@/components/ui/BaseModal.vue'
 
 const toast = useToast()
 const loading = ref(true)
 const rows = ref([])
 const complexList = ref([])
+
+// 상세 팝업
+const detailOpen = ref(false)
+const detail = ref(null)
+function openDetail(m) {
+  detail.value = m
+  detailOpen.value = true
+}
 
 const search = ref('')
 const fType = ref('')
@@ -82,7 +91,7 @@ function exportCsv() {
 
 <template>
   <div>
-    <PageHeader title="입출고 조회" subtitle="상품/SKU별 입·출고·조정·실사 이력 (누가·언제·무엇을·왜)">
+    <PageHeader title="입출고 통합조회" subtitle="상품/SKU별 입·출고·조정·실사 이력 (누가·언제·무엇을·왜)">
       <button class="btn-ghost" @click="exportCsv">CSV 내보내기</button>
     </PageHeader>
 
@@ -111,7 +120,7 @@ function exportCsv() {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="m in filtered" :key="m.id" class="hover:bg-slate-50/60">
+          <tr v-for="m in filtered" :key="m.id" class="cursor-pointer hover:bg-brand-50/40" @click="openDetail(m)">
             <td class="whitespace-nowrap px-3 py-2.5 text-xs text-slate-500">{{ fmt(m.at) }}</td>
             <td class="px-3 py-2.5"><span class="badge" :class="typeMeta[m.type]?.c">{{ typeMeta[m.type]?.t || m.type }}</span></td>
             <td class="px-3 py-2.5">
@@ -119,9 +128,13 @@ function exportCsv() {
               <p class="mt-0.5 text-slate-700">{{ m.productName }}</p>
             </td>
             <td class="hidden px-3 py-2.5 text-xs text-slate-400 lg:table-cell">{{ m.pathLabel }}</td>
-            <td class="whitespace-nowrap px-3 py-2.5 text-right">
-              <span class="text-slate-400">{{ m.before }}→{{ m.after }}</span>
-              <span class="ml-1 font-semibold" :class="m.delta >= 0 ? 'text-emerald-600' : 'text-rose-500'">{{ m.delta > 0 ? '+' : '' }}{{ m.delta }}</span>
+            <td class="whitespace-nowrap px-3 py-2.5">
+              <div class="flex items-center justify-end gap-1.5">
+                <span class="text-xs text-slate-400">{{ m.before }}</span>
+                <svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="text-xs font-semibold text-slate-700">{{ m.after }}</span>
+                <span class="badge ml-1 font-bold tabular-nums" :class="m.delta >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'">{{ m.delta > 0 ? '+' : '' }}{{ m.delta }}</span>
+              </div>
             </td>
             <td class="whitespace-nowrap px-3 py-2.5 text-slate-600">{{ m.byName }}</td>
             <td class="px-3 py-2.5 text-slate-500">
@@ -131,5 +144,36 @@ function exportCsv() {
         </tbody>
       </table>
     </div>
+
+    <!-- 수량 변화 상세 -->
+    <BaseModal v-model="detailOpen" title="수량 변화 상세" size="sm">
+      <div v-if="detail" class="space-y-3 text-sm">
+        <div class="flex items-center justify-between">
+          <span class="badge" :class="typeMeta[detail.type]?.c">{{ typeMeta[detail.type]?.t || detail.type }}</span>
+          <span class="text-xs text-slate-400">{{ fmt(detail.at) }}</span>
+        </div>
+
+        <div class="grid grid-cols-3 items-center gap-2 rounded-xl bg-slate-50 p-3 text-center">
+          <div><p class="text-[11px] text-slate-400">이전</p><p class="text-2xl font-bold text-slate-500 tabular-nums">{{ detail.before }}</p></div>
+          <div>
+            <p class="text-[11px] text-slate-400">변동</p>
+            <p class="text-2xl font-extrabold tabular-nums" :class="detail.delta >= 0 ? 'text-emerald-600' : 'text-rose-500'">{{ detail.delta > 0 ? '+' : '' }}{{ detail.delta }}</p>
+          </div>
+          <div><p class="text-[11px] text-slate-400">이후</p><p class="text-2xl font-bold text-slate-800 tabular-nums">{{ detail.after }}</p></div>
+        </div>
+
+        <dl class="overflow-hidden rounded-lg border border-slate-100">
+          <div class="flex items-center justify-between border-b border-slate-50 px-3 py-2"><dt class="text-slate-400">SKU</dt><dd class="font-mono text-slate-700">{{ detail.skuCode }}</dd></div>
+          <div class="flex items-center justify-between border-b border-slate-50 px-3 py-2"><dt class="text-slate-400">상품</dt><dd class="text-slate-700">{{ detail.productName }}</dd></div>
+          <div v-if="detail.pathLabel || detail.complexName" class="border-b border-slate-50 px-3 py-2"><dt class="text-slate-400">경로</dt><dd class="mt-0.5 text-xs text-slate-600">{{ detail.pathLabel || detail.complexName }}</dd></div>
+          <div class="flex items-center justify-between border-b border-slate-50 px-3 py-2"><dt class="text-slate-400">처리자</dt><dd class="text-slate-700">{{ detail.byName }}</dd></div>
+          <div v-if="detail.reason" class="flex items-center justify-between border-b border-slate-50 px-3 py-2"><dt class="text-slate-400">사유</dt><dd><span class="badge bg-amber-50 text-amber-700">{{ detail.reason }}</span></dd></div>
+          <div v-if="detail.memo" class="px-3 py-2"><dt class="text-slate-400">내용</dt><dd class="mt-0.5 whitespace-pre-line text-slate-700">{{ detail.memo }}</dd></div>
+        </dl>
+      </div>
+      <template #footer>
+        <button class="btn-primary" @click="detailOpen = false">닫기</button>
+      </template>
+    </BaseModal>
   </div>
 </template>

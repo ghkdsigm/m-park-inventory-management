@@ -1,11 +1,12 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { skus, products, applyStock, listMovements } from '@/services/db'
+import { skus, products, applyStock, listMovements, replaceLifecycle } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { resolveImage } from '@/utils/image'
+import { lifecycleStatus, daysUntil, fmtDate } from '@/utils/date'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,6 +62,42 @@ const statusMeta = {
 }
 const typeLabel = { in: '입고', out: '출고', adjust: '조정', audit: '실사' }
 
+// 연한(주기 교체)
+const lifeStatus = computed(() => (sku.value?.lifecycleEnabled ? lifecycleStatus(sku.value.nextReplaceAt) : 'none'))
+const lifeDays = computed(() => daysUntil(sku.value?.nextReplaceAt))
+const lifeMeta = {
+  ok: { t: '정상', c: 'bg-emerald-500' },
+  soon: { t: '교체 임박', c: 'bg-amber-500' },
+  over: { t: '교체 초과', c: 'bg-rose-500' },
+  none: { t: '', c: '' },
+}
+const lifeText = computed(() => {
+  const d = lifeDays.value
+  if (d === null) return ''
+  if (d < 0) return `${-d}일 초과`
+  if (d === 0) return '오늘'
+  return `D-${d}`
+})
+
+async function doReplace() {
+  const ok = await confirm.value.ask({
+    title: '교체 완료',
+    message: `SKU ${sku.value.code}\n교체 처리하고 다음 예정일을 갱신할까요?`,
+    confirmText: '교체 완료',
+  })
+  if (!ok) return
+  working.value = true
+  try {
+    const r = await replaceLifecycle(sku.value.id, auth.actor, sku.value.replaceReason || '')
+    toast.success(`교체 완료 · 다음 예정 ${fmtDate(r.nextReplaceAt) || '-'}`)
+    await load()
+  } catch (e) {
+    toast.error(e.message || '처리 실패')
+  } finally {
+    working.value = false
+  }
+}
+
 async function run(type, value, label) {
   const ok = await confirm.value.ask({
     title: `${label} 처리`,
@@ -107,6 +144,10 @@ function fmtTime(ts) {
 
     <div v-else class="flex-1 space-y-4 p-4">
       <p class="text-xs text-slate-400">{{ sku.pathLabel }}</p>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="badge bg-brand-50 text-brand-700">📍 {{ sku.locationLabel ? sku.complexName + ' › ' + sku.locationLabel : (sku.complexName || '위치 미지정') }}</span>
+        <span v-if="sku.storageLocationCode" class="font-mono text-[11px] text-slate-400">{{ sku.storageLocationCode }}</span>
+      </div>
 
       <div class="card overflow-hidden">
         <img :src="imageUrl" class="h-44 w-full bg-slate-50 object-cover" alt="상품 이미지" />
@@ -155,6 +196,20 @@ function fmtTime(ts) {
           <button class="btn py-3 text-white bg-amber-500 hover:bg-amber-600" :disabled="working" @click="run('adjust', setQty, '재고조정')">조정 = {{ setQty }}</button>
           <button class="btn py-3 text-white bg-violet-600 hover:bg-violet-700" :disabled="working" @click="run('audit', setQty, '재고실사')">실사 = {{ setQty }}</button>
         </div>
+      </div>
+
+      <!-- 연한(주기 교체) -->
+      <div v-if="sku.lifecycleEnabled" class="card p-4">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-semibold text-slate-700">연한(주기 교체)</p>
+          <span class="badge text-white" :class="lifeMeta[lifeStatus]?.c">{{ lifeMeta[lifeStatus]?.t }}<span v-if="lifeText"> · {{ lifeText }}</span></span>
+        </div>
+        <div class="mt-2 grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-slate-100 text-center text-sm">
+          <div class="bg-white py-2"><p class="text-xs text-slate-400">다음 교체예정</p><p class="font-semibold text-slate-700">{{ fmtDate(sku.nextReplaceAt) || '—' }}</p></div>
+          <div class="bg-white py-2"><p class="text-xs text-slate-400">최근 교체일</p><p class="font-semibold text-slate-700">{{ fmtDate(sku.lastReplacedAt) || '—' }}</p></div>
+        </div>
+        <p v-if="sku.replaceReason" class="mt-2 text-xs text-slate-500">사유: {{ sku.replaceReason }}</p>
+        <button class="btn mt-3 w-full bg-violet-600 py-3 text-white hover:bg-violet-700" :disabled="working" @click="doReplace">교체 완료 처리</button>
       </div>
 
       <!-- 이력 -->

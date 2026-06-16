@@ -4,6 +4,15 @@ import { skus, complexes, categories, productCodes } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import { resolveImage } from '@/utils/image'
+import { lifecycleStatus } from '@/utils/date'
+
+function lifeBadge(s) {
+  if (!s.lifecycleEnabled) return null
+  const st = lifecycleStatus(s.nextReplaceAt)
+  if (st === 'over') return { t: '교체초과', c: 'bg-rose-50 text-rose-600' }
+  if (st === 'soon') return { t: '교체임박', c: 'bg-amber-50 text-amber-700' }
+  return null
+}
 
 const toast = useToast()
 const loading = ref(true)
@@ -19,6 +28,7 @@ const fProductCode = ref('')
 const fStatus = ref('')
 const sort = ref('recent')
 const groupByComplex = ref(false)
+const showTotal = ref(false)
 
 const SORTS = [
   { v: 'recent', t: '최신순' },
@@ -128,6 +138,7 @@ function resetFilters() {
       <select v-model="fProductCode" class="input w-auto"><option value="">전체 제품코드</option><option v-for="p in productCodeOptions" :key="p.id" :value="p.id">{{ p.name }}</option></select>
       <select v-model="fStatus" class="input w-auto"><option v-for="s in STATUS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
       <select v-model="sort" class="input w-auto"><option v-for="s in SORTS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+      <button class="btn-ghost btn-sm" :class="showTotal ? 'bg-brand-50 text-brand-700 ring-brand-300' : ''" @click="showTotal = !showTotal">합계 보기</button>
       <button class="btn-ghost btn-sm" @click="resetFilters">초기화</button>
     </div>
 
@@ -139,6 +150,7 @@ function resetFilters() {
           <tr>
             <th class="px-3 py-2.5 font-semibold">SKU / 상품</th>
             <th class="hidden px-3 py-2.5 font-semibold md:table-cell">경로</th>
+            <th class="hidden px-3 py-2.5 font-semibold sm:table-cell">위치</th>
             <th class="px-3 py-2.5 text-right font-semibold">재고</th>
             <th class="hidden px-3 py-2.5 text-right font-semibold sm:table-cell">안전</th>
             <th class="px-3 py-2.5 font-semibold">상태</th>
@@ -148,13 +160,14 @@ function resetFilters() {
         <!-- 단지별 묶기 -->
         <template v-if="groupByComplex">
           <tbody v-for="(rows, cx) in grouped" :key="cx" class="divide-y divide-slate-50">
-            <tr class="bg-slate-50/80"><td colspan="6" class="px-3 py-1.5 text-xs font-bold text-slate-500">📦 {{ cx }} <span class="font-normal text-slate-400">({{ rows.length }} SKU)</span></td></tr>
+            <tr class="bg-slate-50/80"><td colspan="7" class="px-3 py-1.5 text-xs font-bold text-slate-500">📦 {{ cx }} <span class="font-normal text-slate-400">({{ rows.length }} SKU)</span></td></tr>
             <tr v-for="s in rows" :key="s.id" class="hover:bg-slate-50/60">
               <td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" /><div><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span><p class="mt-0.5 text-slate-700">{{ s.productName }} <span class="text-xs text-slate-400">{{ s.spec }}</span></p></div></div></td>
               <td class="hidden px-3 py-2.5 text-xs text-slate-400 md:table-cell">{{ s.pathLabel }}</td>
+              <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><span v-if="s.locationLabel" class="text-slate-500">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">미지정</span><span v-if="s.locationVerifiedAt" class="ml-1 text-emerald-600" title="실사 검증됨">✓</span></td>
               <td class="px-3 py-2.5 text-right font-bold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-800'">{{ s.qty }}</td>
               <td class="hidden px-3 py-2.5 text-right text-slate-400 sm:table-cell">{{ s.safetyStock || '—' }}</td>
-              <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span></td>
+              <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span><span v-if="lifeBadge(s)" class="badge ml-1" :class="lifeBadge(s).c">{{ lifeBadge(s).t }}</span></td>
               <td class="hidden px-3 py-2.5 text-right text-xs text-slate-400 lg:table-cell">+{{ s.totalIn || 0 }} / -{{ s.totalOut || 0 }}</td>
             </tr>
           </tbody>
@@ -164,12 +177,24 @@ function resetFilters() {
           <tr v-for="s in filtered" :key="s.id" class="hover:bg-slate-50/60">
             <td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" /><div><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span><p class="mt-0.5 text-slate-700">{{ s.productName }} <span class="text-xs text-slate-400">{{ s.spec }}</span></p></div></div></td>
             <td class="hidden px-3 py-2.5 text-xs text-slate-400 md:table-cell">{{ s.pathLabel }}</td>
+              <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><span v-if="s.locationLabel" class="text-slate-500">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">미지정</span><span v-if="s.locationVerifiedAt" class="ml-1 text-emerald-600" title="실사 검증됨">✓</span></td>
             <td class="px-3 py-2.5 text-right font-bold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-800'">{{ s.qty }}</td>
             <td class="hidden px-3 py-2.5 text-right text-slate-400 sm:table-cell">{{ s.safetyStock || '—' }}</td>
-            <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span></td>
+            <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span><span v-if="lifeBadge(s)" class="badge ml-1" :class="lifeBadge(s).c">{{ lifeBadge(s).t }}</span></td>
             <td class="hidden px-3 py-2.5 text-right text-xs text-slate-400 lg:table-cell">+{{ s.totalIn || 0 }} / -{{ s.totalOut || 0 }}</td>
           </tr>
         </tbody>
+        <tfoot v-if="showTotal" class="border-t-2 border-slate-200 bg-slate-50 text-sm font-bold">
+          <tr>
+            <td class="px-3 py-3 text-slate-600">합계 · {{ filtered.length }} SKU</td>
+            <td class="hidden md:table-cell"></td>
+            <td class="hidden sm:table-cell"></td>
+            <td class="px-3 py-3 text-right text-brand-700">{{ stats.totalQty.toLocaleString() }}개</td>
+            <td class="hidden sm:table-cell"></td>
+            <td></td>
+            <td class="hidden lg:table-cell"></td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   </div>

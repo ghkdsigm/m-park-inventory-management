@@ -50,6 +50,10 @@ const routes = [
       { path: 'products', name: 'products', component: () => import('@/pages/products/ProductsView.vue'), meta: { admin: true } },
       { path: 'skus', name: 'skus', component: () => import('@/pages/products/SkusView.vue'), meta: { admin: true } },
 
+      // ── 위치관리 (admin) ──
+      { path: 'locations', name: 'locations', component: () => import('@/pages/locations/LocationView.vue'), meta: { admin: true } },
+      { path: 'storage-locations', name: 'storageLocations', component: () => import('@/pages/locations/StorageLocationView.vue'), meta: { admin: true } },
+
       // ── 재고관리 ──
       { path: 'stock/inbound', name: 'inbound', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'in' } },
       { path: 'stock/outbound', name: 'outbound', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'out' } },
@@ -57,6 +61,7 @@ const routes = [
       { path: 'stock/audit', name: 'audit', component: () => import('@/pages/stock/StockAuditView.vue'), meta: { admin: true } },
       { path: 'stock/history', name: 'history', component: () => import('@/pages/stock/StockHistoryView.vue') },
       { path: 'stock/status', name: 'status', component: () => import('@/pages/stock/StockStatusView.vue') },
+      { path: 'stock/lifecycle', name: 'lifecycle', component: () => import('@/pages/stock/LifecycleView.vue') },
 
       // ── 설정 ──
       { path: 'users', name: 'users', component: () => import('@/pages/admin/UsersView.vue'), meta: { admin: true } },

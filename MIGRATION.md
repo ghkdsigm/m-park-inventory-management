@@ -131,6 +131,32 @@ create table product_images (   -- 다중 이미지
   sort int default 0
 );
 
+-- 위치 (단지 > 구역 > 상세구역)
+create table zones (
+  id uuid primary key default gen_random_uuid(),
+  name varchar(100) not null,
+  complex_id uuid not null references complexes(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create table sub_zones (
+  id uuid primary key default gen_random_uuid(),
+  name varchar(100) not null,
+  zone_id uuid not null references zones(id) on delete cascade,
+  complex_id uuid not null references complexes(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+-- 보관위치 (실질적 최종 위치): 단지 필수, 구역/상세구역 선택, 코드 자동 LOC-000001
+create table storage_locations (
+  id uuid primary key default gen_random_uuid(),
+  code varchar(40) unique not null,
+  name varchar(100),
+  complex_id  uuid not null references complexes(id) on delete cascade,
+  zone_id     uuid references zones(id) on delete set null,
+  sub_zone_id uuid references sub_zones(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create sequence seq_storage_locations;   -- 'LOC-' || lpad(nextval, 6, '0')
+
 -- SKU (재고코드)
 create table skus (
   id uuid primary key default gen_random_uuid(),
@@ -149,10 +175,27 @@ create table skus (
   total_in int not null default 0,
   total_out int not null default 0,
   status varchar(12) not null default 'in_stock' check (status in ('in_stock','low','out')),
+  -- 보관위치 (재고조정에서 지정, 재고실사에서 검증)
+  storage_location_id uuid references storage_locations(id) on delete set null,
+  zone_id uuid references zones(id) on delete set null,          -- storage_location 에서 복사(비정규화)
+  sub_zone_id uuid references sub_zones(id) on delete set null,
+  location_verified_at timestamptz,
+  location_verified_by varchar(100),
+  -- 연한관리(주기 교체)
+  lifecycle_enabled boolean not null default false,
+  cycle_value int,
+  cycle_unit varchar(8),               -- day | month | year
+  last_replaced_at timestamptz,
+  next_replace_at timestamptz,
+  replace_reason varchar(100),
+  lifecycle_note text,
+  last_replaced_by varchar(100),
   created_at timestamptz not null default now()
 );
 create index idx_skus_product on skus(product_id);
-create index idx_skus_complex on skus(product_id);
+create index idx_skus_zone on skus(zone_id);
+create index idx_skus_next_replace on skus(next_replace_at) where lifecycle_enabled;
+-- 위치 라벨(zone > sub_zone)은 JOIN/뷰로 대체 (현재 Firestore는 zoneName/subZoneName/locationLabel 비정규화 저장)
 
 -- 재고 원장
 create table stock_movements (
@@ -171,6 +214,19 @@ create table stock_movements (
 );
 create index idx_movements_sku_at on stock_movements(sku_id, created_at desc);
 create index idx_movements_at on stock_movements(created_at desc);
+
+-- 연한(주기 교체) 이력
+create table lifecycle_logs (
+  id uuid primary key default gen_random_uuid(),
+  sku_id uuid not null references skus(id) on delete cascade,
+  replaced_at timestamptz not null,
+  next_replace_at timestamptz,
+  reason varchar(100),
+  by_user_id uuid references users(id),
+  by_name varchar(100),
+  created_at timestamptz not null default now()
+);
+create index idx_lifecycle_logs_sku on lifecycle_logs(sku_id, created_at desc);
 
 -- 일별 집계
 create table daily_stats (
