@@ -155,6 +155,51 @@ export const skus = {
   async listByProduct(productId) {
     return rowsToCamel(unwrap(await supabase.from('skus').select('*').eq('product_id', productId).order('code', { ascending: true })))
   },
+  /**
+   * 서버측 페이징/필터/정렬/집계 (#1 풀로드 제거). 한 번 호출로 페이지 행 + 총계까지.
+   * @returns {{ rows, total, totalQty, lowCount, outCount }}
+   */
+  async page({
+    complexId = '', categoryId = '', productCodeId = '', productDetailId = '',
+    status = '', search = '', lifecycleOnly = false,
+    sort = 'recent', page = 1, pageSize = 10,
+  } = {}) {
+    const data = unwrap(
+      await supabase.rpc('skus_page', {
+        p_complex: complexId || null,
+        p_category: categoryId || null,
+        p_product_code: productCodeId || null,
+        p_product_detail: productDetailId || null,
+        p_status: status || null,
+        p_search: search || null,
+        p_lifecycle_only: !!lifecycleOnly,
+        p_sort: sort || 'recent',
+        p_limit: pageSize,
+        p_offset: Math.max(0, (page - 1) * pageSize),
+      })
+    )
+    return {
+      rows: rowsToCamel(data?.rows || []),
+      total: data?.total || 0,
+      totalQty: data?.totalQty || 0,
+      lowCount: data?.lowCount || 0,
+      outCount: data?.outCount || 0,
+    }
+  },
+  /** 단지별 묶기 요약 (단지별 SKU수/총재고/부족/품절) */
+  async groupByComplex(filters = {}) {
+    const data = unwrap(
+      await supabase.rpc('skus_group_by_complex', {
+        p_complex: filters.complexId || null,
+        p_category: filters.categoryId || null,
+        p_product_code: filters.productCodeId || null,
+        p_product_detail: filters.productDetailId || null,
+        p_status: filters.status || null,
+        p_search: filters.search || null,
+      })
+    )
+    return rowsToCamel(data || [])
+  },
   async get(id) {
     const { data, error } = await supabase.from('skus').select('*').eq('id', id).maybeSingle()
     if (error) throw error
