@@ -8,11 +8,13 @@ const routes = [
     component: () => import('@/pages/LoginView.vue'),
     meta: { public: true },
   },
-  // 모바일 QR 스캔 대상 (SKU 코드 기준)
+  // 모바일 QR 스캔 대상 (SKU 코드 기준) — 백오피스와 분리된 입/출고 전용 단말.
+  // 자체 로그인을 화면 안에서 처리하므로 public (백오피스 /login 으로 튕기지 않음)
   {
     path: '/s/:code',
     name: 'scan',
     component: () => import('@/pages/mobile/SkuScanView.vue'),
+    meta: { public: true },
   },
   {
     path: '/',
@@ -55,8 +57,8 @@ const routes = [
       { path: 'storage-locations', name: 'storageLocations', component: () => import('@/pages/locations/StorageLocationView.vue'), meta: { admin: true } },
 
       // ── 재고관리 ──
-      { path: 'stock/inbound', name: 'inbound', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'in' } },
-      { path: 'stock/outbound', name: 'outbound', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'out' } },
+      { path: 'stock/inbound', name: 'inbound', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'in', stock: true } },
+      { path: 'stock/outbound', name: 'outbound', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'out', stock: true } },
       { path: 'stock/adjust', name: 'adjust', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'adjust', admin: true } },
       { path: 'stock/audit', name: 'audit', component: () => import('@/pages/stock/StockAuditView.vue'), meta: { admin: true } },
       { path: 'stock/history', name: 'history', component: () => import('@/pages/stock/StockHistoryView.vue') },
@@ -83,6 +85,7 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return true
   if (!auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
   if (to.meta.admin && !auth.isAdmin) return { name: 'dashboard' }
+  if (to.meta.stock && !auth.canStock) return { name: 'dashboard' }
   return true
 })
 

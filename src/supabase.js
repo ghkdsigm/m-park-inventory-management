@@ -12,10 +12,39 @@ if (anonKey && /[^\x00-\x7F]/.test(anonKey)) {
   console.error('[Supabase] anon key 에 한글 등 비ASCII 문자가 있습니다. .env 의 VITE_SUPABASE_ANON_KEY 를 실제 키로 교체하세요.')
 }
 
+/* ============ 자동로그인 토글 ============
+ * '1'(기본) = 영구 보관(localStorage) → 브라우저 닫아도 로그인 유지(자동로그인)
+ * '0'        = 세션 보관(sessionStorage) → 탭/브라우저 닫으면 로그아웃
+ * 로그인 직전 setAutoLogin() 으로 설정하면, 세션 토큰이 알맞은 저장소에 기록된다.
+ */
+const AUTOLOGIN_KEY = 'mpark.autoLogin'
+export function setAutoLogin(on) {
+  try { localStorage.setItem(AUTOLOGIN_KEY, on ? '1' : '0') } catch (e) { /* ignore */ }
+}
+export function getAutoLogin() {
+  try { return localStorage.getItem(AUTOLOGIN_KEY) !== '0' } catch (e) { return true }
+}
+// localStorage(영구) ↔ sessionStorage(세션) 를 토글에 따라 전환하는 저장소 어댑터
+const authStorage = {
+  getItem(k) {
+    try { return localStorage.getItem(k) ?? sessionStorage.getItem(k) } catch (e) { return null }
+  },
+  setItem(k, v) {
+    try {
+      if (getAutoLogin()) { localStorage.setItem(k, v); sessionStorage.removeItem(k) }
+      else { sessionStorage.setItem(k, v); localStorage.removeItem(k) }
+    } catch (e) { /* ignore */ }
+  },
+  removeItem(k) {
+    try { localStorage.removeItem(k); sessionStorage.removeItem(k) } catch (e) { /* ignore */ }
+  },
+}
+
 export const supabase = createClient(url || 'http://localhost', anonKey || 'anon', {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    storage: authStorage,
   },
 })
 

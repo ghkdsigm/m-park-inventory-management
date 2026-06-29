@@ -42,6 +42,7 @@ const typeMeta = {
   out: { t: '출고', c: 'bg-sky-50 text-sky-700' },
   adjust: { t: '조정', c: 'bg-amber-50 text-amber-700' },
   audit: { t: '실사', c: 'bg-violet-50 text-violet-700' },
+  void: { t: '취소', c: 'bg-rose-50 text-rose-600' },
 }
 const statusMeta = {
   in_stock: { t: '정상', c: 'bg-emerald-50 text-emerald-700' },

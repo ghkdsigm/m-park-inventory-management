@@ -22,6 +22,8 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     isLoggedIn: (s) => !!s.user,
     isAdmin: (s) => s.profile?.role === 'admin',
+    // 입/출고 권한 — 관리자(전체) 또는 입/출고 권한(can_stock)이 부여된 일반 사용자
+    canStock: (s) => s.profile?.role === 'admin' || s.profile?.canStock === true,
     displayName: (s) => s.profile?.displayName || s.user?.email || '사용자',
     actor: (s) => ({ uid: s.user?.id, name: s.profile?.displayName || s.user?.email || '사용자' }),
   },

@@ -1,11 +1,12 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { skus, complexes, categories, productCodes, productDetails, storageLocations, applyStock, listMovements } from '@/services/db'
+import { skus, complexes, categories, productCodes, productDetails, storageLocations, applyStock, listMovements, voidMovement } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import Pager from '@/components/ui/Pager.vue'
+import BaseModal from '@/components/ui/BaseModal.vue'
 import { resolveImage } from '@/utils/image'
 import { fmtDateTime } from '@/utils/date'
 import { specText } from '@/utils/sku'
@@ -202,6 +203,7 @@ async function pickByCode() {
 }
 
 async function submit() {
+  if ((op.value === 'in' || op.value === 'out') && !auth.canStock) return toast.error('입/출고 권한이 없습니다. 관리자에게 문의하세요.')
   if (!selected.value) return toast.error('SKU를 선택하세요.')
   const v = Number(qty.value)
   if (!Number.isFinite(v) || v < 0) return toast.error('수량을 올바르게 입력하세요.')
@@ -228,8 +230,54 @@ async function submit() {
   }
 }
 
-const typeLabel = { in: '입고', out: '출고', adjust: '조정', audit: '실사' }
+const typeLabel = { in: '입고', out: '출고', adjust: '조정', audit: '실사', void: '취소' }
 const fmtTime = fmtDateTime
+
+/* ---------- 처리 취소(역분개) ---------- */
+const VOID_REASONS = ['수량 오기입', '방향 오선택(입출고 바뀜)', '중복 처리', '기타']
+const voidTarget = ref(null)
+const voidReason = ref('')
+const voidMemo = ref('')
+const voiding = ref(false)
+const helpOpen = ref(false)
+
+function isToday(at) {
+  if (!at) return false
+  const d = new Date(at)
+  const now = new Date()
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+}
+// 본인 등록 + 당일 + 미취소 + 취소전표 아님 → 현장 취소 가능
+function canVoid(m) {
+  return m.byUserId === auth.user?.id && m.type !== 'void' && !m.voided && isToday(m.at)
+}
+function openVoid(m) {
+  voidTarget.value = m
+  voidReason.value = ''
+  voidMemo.value = ''
+}
+async function confirmVoid() {
+  if (!voidTarget.value) return
+  if (!voidReason.value) return toast.error('취소 사유를 선택하세요.')
+  const reasonText = voidReason.value === '기타' ? (voidMemo.value || '').trim() : voidReason.value
+  if (voidReason.value === '기타' && !reasonText) return toast.error('취소 사유를 입력하세요.')
+  voiding.value = true
+  try {
+    const r = await voidMovement(voidTarget.value.id, reasonText)
+    toast.success(`처리를 취소했습니다 · 재고 ${r.before}→${r.after}개`)
+    const skuId = voidTarget.value.skuId
+    // 로컬 재고 반영
+    if (selectedSku.value && selectedSku.value.id === skuId) selectedSku.value = { ...selectedSku.value, qty: r.after }
+    const idx = rows.value.findIndex((s) => s.id === skuId)
+    if (idx > -1) rows.value[idx] = { ...rows.value[idx], qty: r.after }
+    voidTarget.value = null
+    if (selected.value) movements.value = await listMovements(selected.value.id, 6)
+  } catch (e) {
+    toast.error(e.message || '취소 실패')
+  } finally {
+    voiding.value = false
+  }
+}
 </script>
 
 <template>
@@ -355,14 +403,30 @@ const fmtTime = fmtDateTime
             </button>
 
             <div v-if="movements.length" class="mt-4">
-              <p class="mb-1 text-xs font-semibold text-slate-500">최근 이력</p>
+              <div class="mb-1 flex items-center justify-between">
+                <p class="text-xs font-semibold text-slate-500">최근 이력</p>
+                <button
+                  class="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-500 hover:bg-slate-200"
+                  title="취소 안내"
+                  @click="helpOpen = true"
+                >?</button>
+              </div>
               <ul class="divide-y divide-slate-50 text-xs">
-                <li v-for="m in movements" :key="m.id" class="flex items-center justify-between py-1.5">
-                  <span class="flex items-center gap-1.5">
-                    <span class="badge bg-slate-100 text-[10px]">{{ typeLabel[m.type] }}</span>
+                <li v-for="m in movements" :key="m.id" class="flex items-center justify-between gap-2 py-1.5">
+                  <span class="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <span class="badge text-[10px]" :class="m.type === 'void' ? 'bg-rose-50 text-rose-600' : 'bg-slate-100'">{{ typeLabel[m.type] }}</span>
+                    <span v-if="m.voided" class="badge bg-slate-100 text-[10px] text-slate-400 line-through">취소됨</span>
                     <span class="text-slate-500">{{ m.byName }}</span>
+                    <span v-if="m.reason" class="text-slate-400">· {{ m.reason }}</span>
                   </span>
-                  <span class="text-slate-400">{{ m.before }}→{{ m.after }} · {{ fmtTime(m.at) }}</span>
+                  <span class="flex shrink-0 items-center gap-2">
+                    <span class="text-slate-400">{{ m.before }}→{{ m.after }} · {{ fmtTime(m.at) }}</span>
+                    <button
+                      v-if="canVoid(m)"
+                      class="rounded-md border border-rose-200 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-50"
+                      @click="openVoid(m)"
+                    >취소</button>
+                  </span>
                 </li>
               </ul>
             </div>
@@ -386,6 +450,48 @@ const fmtTime = fmtDateTime
         </div>
       </Transition>
     </Teleport>
+
+    <!-- 처리 취소 모달 -->
+    <BaseModal :model-value="!!voidTarget" size="sm" title="처리 취소" @update:model-value="voidTarget = null">
+      <div v-if="voidTarget" class="space-y-3">
+        <div class="rounded-lg bg-slate-50 p-3 text-sm">
+          <p><span class="badge bg-slate-100 text-[10px]">{{ typeLabel[voidTarget.type] }}</span> <b>{{ voidTarget.qty }}개</b> · {{ voidTarget.skuCode }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ voidTarget.before }}→{{ voidTarget.after }}개 · {{ fmtTime(voidTarget.at) }}</p>
+          <p class="mt-1 text-xs text-slate-400">취소하면 이 처리를 되돌리는 역분개가 기록되며, 원래 이력은 보존됩니다.</p>
+        </div>
+        <div>
+          <label class="label">취소 사유 *</label>
+          <select v-model="voidReason" class="input">
+            <option value="">사유 선택</option>
+            <option v-for="r in VOID_REASONS" :key="r" :value="r">{{ r }}</option>
+          </select>
+        </div>
+        <input v-if="voidReason === '기타'" v-model="voidMemo" class="input" placeholder="상세 사유를 입력하세요" />
+      </div>
+      <template #footer>
+        <button class="btn-ghost" :disabled="voiding" @click="voidTarget = null">닫기</button>
+        <button class="btn bg-rose-600 text-white hover:bg-rose-700" :disabled="voiding" @click="confirmVoid">{{ voiding ? '취소 중…' : '취소 확정' }}</button>
+      </template>
+    </BaseModal>
+
+    <!-- 취소 안내 팝업 -->
+    <BaseModal v-model="helpOpen" size="sm" title="처리 취소 안내">
+      <div class="space-y-3 text-sm text-slate-600">
+        <p>현장에서 <b>본인이 등록한 당일 처리</b>만 직접 취소할 수 있습니다.</p>
+        <p>다음의 경우에는 취소 버튼이 보이지 않거나 취소가 거부됩니다:</p>
+        <ul class="list-disc space-y-1 pl-5 text-slate-500">
+          <li>처리한 날짜가 <b>지난</b> 경우 (당일 한정)</li>
+          <li>다른 담당자가 등록한 처리</li>
+          <li>그 사이 <b>재고가 변동</b>되어 되돌리면 수량이 맞지 않는 경우</li>
+        </ul>
+        <p class="rounded-lg bg-amber-50 p-3 text-amber-700">
+          이때는 <b>관리자에게 재고 정정을 요청</b>하세요. 관리자는 재고조정/실사로 바로잡을 수 있습니다.
+        </p>
+      </div>
+      <template #footer>
+        <button class="btn-primary" @click="helpOpen = false">확인</button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 

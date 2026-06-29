@@ -23,8 +23,8 @@ const allNav = computed(() => [
   { name: 'locations', label: '위치코드관리', icon: 'pin', to: { name: 'locations' }, group: '위치관리', admin: true },
   { name: 'storageLocations', label: '보관위치관리', icon: 'box', to: { name: 'storageLocations' }, group: '위치관리', admin: true },
 
-  { name: 'inbound', label: '입고관리', icon: 'inbound', to: { name: 'inbound' }, group: '입/출고관리' },
-  { name: 'outbound', label: '출고관리', icon: 'outbound', to: { name: 'outbound' }, group: '입/출고관리' },
+  { name: 'inbound', label: '입고관리', icon: 'inbound', to: { name: 'inbound' }, group: '입/출고관리', stock: true },
+  { name: 'outbound', label: '출고관리', icon: 'outbound', to: { name: 'outbound' }, group: '입/출고관리', stock: true },
   { name: 'history', label: '입출고통합조회', icon: 'history', to: { name: 'history' }, group: '입/출고관리' },
   { name: 'lifecycle', label: '연한관리', icon: 'cycle', to: { name: 'lifecycle' }, group: '입/출고관리' },
 
@@ -36,7 +36,7 @@ const allNav = computed(() => [
   { name: 'audit-log', label: '감사로그', icon: 'shield', to: { name: 'audit-log' }, group: '설정', admin: true },
 ])
 
-const nav = computed(() => allNav.value.filter((i) => !i.admin || auth.isAdmin))
+const nav = computed(() => allNav.value.filter((i) => (!i.admin || auth.isAdmin) && (!i.stock || auth.canStock)))
 
 const grouped = computed(() => {
   const g = {}
@@ -47,8 +47,12 @@ const grouped = computed(() => {
 const bottomNav = computed(() => [
   { name: 'dashboard', label: '홈', icon: 'grid', to: { name: 'dashboard' } },
   { name: 'status', label: '재고현황', icon: 'status', to: { name: 'status' } },
-  { name: 'inbound', label: '입고', icon: 'inbound', to: { name: 'inbound' } },
-  { name: 'outbound', label: '출고', icon: 'outbound', to: { name: 'outbound' } },
+  ...(auth.canStock
+    ? [
+        { name: 'inbound', label: '입고', icon: 'inbound', to: { name: 'inbound' } },
+        { name: 'outbound', label: '출고', icon: 'outbound', to: { name: 'outbound' } },
+      ]
+    : []),
   { name: 'menu', label: '메뉴', icon: 'menu', action: () => (drawer.value = true) },
 ])
 

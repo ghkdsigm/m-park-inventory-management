@@ -320,6 +320,11 @@ export async function applyAuditBatch(items, actor, memo = '') {
   return { changed }
 }
 
+/** 입출고 취소(역분개) — 본인 등록 당일분만. 원장 보존 + 취소 전표 기록 (RPC) */
+export async function voidMovement(movementId, reason = '') {
+  return unwrap(await supabase.rpc('void_movement', { p_movement_id: movementId, p_reason: reason || '' }))
+}
+
 export async function listMovements(skuId, max = 100) {
   return rowsToCamel(
     unwrap(await supabase.from('stock_movements').select('*').eq('sku_id', skuId).order('at', { ascending: false }).limit(max))
@@ -395,5 +400,9 @@ export const users = {
   },
   setRole(uid, role) {
     return supabase.from('profiles').update({ role }).eq('id', uid).then(unwrap)
+  },
+  /** 입/출고 권한 부여/회수 (admin) */
+  setStockPerm(uid, canStock) {
+    return supabase.from('profiles').update({ can_stock: !!canStock }).eq('id', uid).then(unwrap)
   },
 }

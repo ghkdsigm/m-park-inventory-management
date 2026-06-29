@@ -42,11 +42,21 @@ async function setRole(u, role) {
     toast.error('권한 변경 실패: ' + (e.message || e.code))
   }
 }
+
+async function setStock(u, on) {
+  try {
+    await users.setStockPerm(u.id, on)
+    u.canStock = on
+    toast.success(`${u.displayName} 입/출고 권한 ${on ? '부여' : '회수'}됨`)
+  } catch (e) {
+    toast.error('권한 변경 실패: ' + (e.message || e.code))
+  }
+}
 </script>
 
 <template>
   <div>
-    <PageHeader title="사용자 관리" subtitle="가입한 사용자의 권한(관리자/일반)을 설정합니다." />
+    <PageHeader title="사용자 관리" subtitle="권한(관리자/일반)과 입/출고 권한을 설정합니다. 일반 사용자는 기본 조회만 가능합니다." />
 
     <div class="card overflow-hidden">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
@@ -57,6 +67,7 @@ async function setRole(u, role) {
             <th class="px-4 py-2.5 font-semibold">이름</th>
             <th class="px-4 py-2.5 font-semibold">이메일</th>
             <th class="px-4 py-2.5 font-semibold">권한</th>
+            <th class="px-4 py-2.5 font-semibold">입/출고 권한</th>
             <th class="px-4 py-2.5 text-right font-semibold">변경</th>
           </tr>
         </thead>
@@ -71,6 +82,16 @@ async function setRole(u, role) {
               <span class="badge" :class="u.role === 'admin' ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-500'">
                 {{ u.role === 'admin' ? '관리자' : '일반' }}
               </span>
+            </td>
+            <td class="px-4 py-3">
+              <!-- 관리자는 항상 입/출고 가능 -->
+              <span v-if="u.role === 'admin'" class="badge bg-emerald-50 text-[11px] text-emerald-700">관리자(자동)</span>
+              <button
+                v-else
+                class="badge cursor-pointer text-[11px]"
+                :class="u.canStock ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'"
+                @click="setStock(u, !u.canStock)"
+              >{{ u.canStock ? '허용 ✓ (회수)' : '조회만 (부여)' }}</button>
             </td>
             <td class="px-4 py-3 text-right">
               <button v-if="u.role !== 'admin'" class="btn-ghost btn-sm" @click="setRole(u, 'admin')">관리자로</button>
