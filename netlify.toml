@@ -1,0 +1,21 @@
+# 엠파크 WMS — Netlify 배포 설정
+# 프론트(Vite SPA)만 배포한다. 백엔드는 Supabase 클라우드(관리형).
+#
+# ⚠️ 배포 전 Netlify 대시보드에 환경변수 등록 필요 (Site settings → Environment variables):
+#   VITE_SUPABASE_URL       = https://nfgcrzvaldcoqqynxkkc.supabase.co
+#   VITE_SUPABASE_ANON_KEY  = (Supabase → Settings → API 의 anon public key)
+#   ※ Vite 환경변수는 "빌드 시점"에 주입되므로, 값이 바뀌면 재배포(rebuild) 필요.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA fallback — 모든 경로를 index.html 로 보내 클라이언트 라우팅 처리.
+# 없으면 /s/<SKU코드> 같은 QR 링크나 새로고침 시 404 가 난다.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
