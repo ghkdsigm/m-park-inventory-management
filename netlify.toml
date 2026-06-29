@@ -11,7 +11,7 @@
   # Windows 에서 만든 package-lock.json 을 리눅스 빌드에서 쓰면 rollup 네이티브 모듈
   # (@rollup/rollup-linux-x64-gnu)을 건너뛰어 빌드가 실패한다.
   # → 빌드 머신에서 lockfile 을 지우고 새로 설치해 OS 에 맞는 모듈을 받게 한다.
-  command = "rm -f package-lock.json && npm install && npm run build"
+  command = "rm -rf node_modules package-lock.json && npm install && npm run build"
   publish = "dist"
 
 [build.environment]
