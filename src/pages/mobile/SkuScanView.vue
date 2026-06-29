@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { skus, products, storageLocations, applyStock, listMovements, replaceLifecycle, voidMovement } from '@/services/db'
 import { setAutoLogin, getAutoLogin } from '@/supabase'
@@ -195,6 +195,25 @@ onMounted(async () => {
   await load()
 })
 
+/* ---------- 확대/축소 잠금 (입/출고 전용 단말처럼 고정) ----------
+ * 안드로이드는 index.html 의 user-scalable=no 로 이미 막히지만, iOS Safari 는 이를 무시한다.
+ * → iOS 핀치(gesture*)와 멀티터치 제스처를 이 화면에서만 차단한다. (단일 터치 스크롤은 그대로)
+ */
+const blockGesture = (e) => e.preventDefault()
+const blockMultiTouch = (e) => { if (e.touches && e.touches.length > 1) e.preventDefault() }
+onMounted(() => {
+  document.addEventListener('gesturestart', blockGesture, { passive: false })
+  document.addEventListener('gesturechange', blockGesture, { passive: false })
+  document.addEventListener('gestureend', blockGesture, { passive: false })
+  document.addEventListener('touchmove', blockMultiTouch, { passive: false })
+})
+onUnmounted(() => {
+  document.removeEventListener('gesturestart', blockGesture)
+  document.removeEventListener('gesturechange', blockGesture)
+  document.removeEventListener('gestureend', blockGesture)
+  document.removeEventListener('touchmove', blockMultiTouch)
+})
+
 const attrLine = computed(() => {
   const s = sku.value
   if (!s) return ''
@@ -341,7 +360,7 @@ const fmtTime = fmtDateTime
 </script>
 
 <template>
-  <div class="mx-auto flex min-h-full max-w-md flex-col bg-slate-50">
+  <div class="mx-auto flex min-h-full max-w-md flex-col touch-manipulation bg-slate-50">
     <header class="sticky top-0 z-10 flex items-center justify-between bg-brand-600 px-4 py-3 text-white">
       <span class="text-sm font-semibold">엠파크 입·출고</span>
       <div class="flex items-center gap-2">
