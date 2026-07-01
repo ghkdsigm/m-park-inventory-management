@@ -217,6 +217,7 @@ async function remove(p) {
       <table v-else class="w-full text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
+            <th class="px-4 py-2.5 font-semibold">상품코드</th>
             <th class="px-4 py-2.5 font-semibold">상품명</th>
             <th class="hidden px-4 py-2.5 font-semibold md:table-cell">기준정보 경로</th>
             <th class="hidden px-4 py-2.5 font-semibold lg:table-cell">제조사</th>
@@ -225,13 +226,12 @@ async function remove(p) {
         </thead>
         <tbody class="divide-y divide-slate-50">
           <tr v-for="p in paged" :key="p.id" class="hover:bg-slate-50/60">
+            <td class="px-4 py-3"><span class="badge bg-brand-50 font-mono text-brand-700">{{ p.code }}</span></td>
             <td class="px-4 py-3">
               <div class="flex items-center gap-3">
                 <img :src="resolveProductImage(p)" class="h-10 w-10 shrink-0 rounded-lg border border-slate-100 object-cover" alt="" />
                 <div>
-                  <p class="font-medium text-slate-800">
-                    <span class="badge mr-1 bg-brand-50 font-mono text-brand-700">{{ p.code }}</span>{{ p.name }}
-                  </p>
+                  <p class="font-medium text-slate-800">{{ p.name }}</p>
                   <p v-if="p.barcode" class="text-xs text-slate-400">바코드 {{ p.barcode }}</p>
                 </div>
               </div>
