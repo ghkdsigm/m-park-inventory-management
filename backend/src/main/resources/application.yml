@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: mpark-wms
+  datasource:
+    url: jdbc:mysql://localhost:3306/mpark_wms?serverTimezone=Asia/Seoul&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USER:mpark}
+    password: ${DB_PASSWORD:mpark}
+  jpa:
+    hibernate:
+      # 스키마는 Flyway 가 관리. JPA 는 검증만 (엔티티↔테이블 불일치 시 기동 실패로 조기 발견)
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+
+# 앱 설정 (Phase 5/6 에서 사용)
+app:
+  cors:
+    # Vue dev 서버 (로컬). 운영 도메인은 배포 시 추가
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5175,http://localhost:5173}
+  jwt:
+    secret: ${JWT_SECRET:dev-only-secret-please-change-min-32-bytes-long-key-0123456789}
+    expiration-ms: 604800000   # 7일
+  storage:
+    dir: ${STORAGE_DIR:./uploads}
+    public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:8080/files}
+
+logging:
+  level:
+    org.hibernate.SQL: debug

@@ -91,7 +91,7 @@ function openReplace(s) {
 }
 async function doReplace() {
   try {
-    const r = await replaceLifecycle(target.value.id, auth.actor, reason.value)
+    const r = await replaceLifecycle(target.value.stockId, auth.actor, reason.value)
     toast.success(`교체 완료 · 다음 예정 ${fmtDate(r.nextReplaceAt) || '-'}`)
     replaceModal.value = false
     await load()

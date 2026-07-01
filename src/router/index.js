@@ -59,6 +59,7 @@ const routes = [
       // ── 재고관리 ──
       { path: 'stock/inbound', name: 'inbound', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'in', stock: true } },
       { path: 'stock/outbound', name: 'outbound', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'out', stock: true } },
+      { path: 'stock/transfer', name: 'transfer', component: () => import('@/pages/stock/StockTransferView.vue'), meta: { stock: true } },
       { path: 'stock/adjust', name: 'adjust', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'adjust', admin: true } },
       { path: 'stock/audit', name: 'audit', component: () => import('@/pages/stock/StockAuditView.vue'), meta: { admin: true } },
       { path: 'stock/history', name: 'history', component: () => import('@/pages/stock/StockHistoryView.vue') },

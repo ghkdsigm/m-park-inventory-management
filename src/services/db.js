@@ -1,408 +1,225 @@
-import { supabase, rowToCamel, rowsToCamel, objToSnake, unwrap } from '@/supabase'
+import { api } from '@/api'
 
 /**
- * 엠파크 WMS 데이터 접근 계층 (Supabase / PostgreSQL).
- * - DB는 snake_case, 앱은 camelCase → supabase.js 의 변환 헬퍼로 자동 매핑
- * - 자동코드(시퀀스)·SKU코드는 DB 트리거가 채움
- * - 재고/교체 트랜잭션은 Postgres 함수(RPC)로 처리 → 동시성/원장/집계 원자적
+ * 엠파크 WMS 데이터 접근 계층 (Spring REST 백엔드).
+ * - 백엔드는 camelCase JSON 을 주고받으므로 변환 불필요.
+ * - 함수 시그니처/반환형은 기존(Supabase) 버전과 동일하게 유지 → 화면 코드 무수정.
+ * - 일부 컬럼명 차이(MySQL 예약어 회피)는 여기서 매핑:
+ *     원장 beforeQty/afterQty → before/after,  일별집계 statDate → date
  */
 
-function dateKeyLocal(d = new Date()) {
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
-
-/* ---------- 공통 보드 ---------- */
-function makeBoard(table) {
+/* ---------- 공통 보드 (CRUD) ---------- */
+function makeBoard(path) {
   return {
-    async list() {
-      return rowsToCamel(unwrap(await supabase.from(table).select('*').order('created_at', { ascending: true })))
-    },
-    async create(data) {
-      return rowToCamel(unwrap(await supabase.from(table).insert(objToSnake(data)).select().single()))
-    },
-    async update(id, data) {
-      return rowToCamel(unwrap(await supabase.from(table).update(objToSnake(data)).eq('id', id).select().single()))
-    },
-    async remove(id) {
-      unwrap(await supabase.from(table).delete().eq('id', id))
-    },
-    async get(id) {
-      const { data, error } = await supabase.from(table).select('*').eq('id', id).maybeSingle()
-      if (error) throw error
-      return data ? rowToCamel(data) : null
-    },
-  }
-}
-// 자동코드형: code 는 트리거가 채우므로 전달돼도 무시
-function makeCodedBoard(table) {
-  const base = makeBoard(table)
-  return {
-    ...base,
-    create(data) {
-      const { code, ...rest } = data
-      return base.create(rest)
-    },
+    list: () => api.get(`/${path}`),
+    get: (id) => api.get(`/${path}/${id}`),
+    create: (data) => api.post(`/${path}`, data),
+    update: (id, data) => api.put(`/${path}/${id}`, data),
+    remove: (id) => api.del(`/${path}/${id}`),
   }
 }
 
 /* ===================== 기준정보 (4단계 코드) ===================== */
-export const complexes = makeBoard('complexes') // 단지: 코드 직접 입력
-export const categories = makeCodedBoard('categories')
-export const productCodes = makeCodedBoard('product_codes')
-export const productDetails = makeCodedBoard('product_details')
+export const complexes = makeBoard('complexes')
+export const categories = makeBoard('categories')
+export const productCodes = makeBoard('product-codes')
+export const productDetails = makeBoard('product-details')
 
 export const MASTER = {
-  complexes: { board: complexes, label: '단지', col: 'complexes', parent: null, auto: false },
-  categories: { board: categories, label: '카테고리', col: 'categories', parent: 'complexes', fk: 'complexId', auto: true },
-  productCodes: { board: productCodes, label: '제품코드', col: 'product_codes', parent: 'categories', fk: 'categoryId', auto: true },
-  productDetails: { board: productDetails, label: '제품상세코드', col: 'product_details', parent: 'productCodes', fk: 'productCodeId', auto: true },
+  complexes: { board: complexes, label: '단지', parent: null, auto: false },
+  categories: { board: categories, label: '카테고리', parent: null, auto: true },
+  productCodes: { board: productCodes, label: '제품코드', parent: 'categories', fk: 'categoryId', auto: true },
+  productDetails: { board: productDetails, label: '제품상세코드', parent: 'productCodes', fk: 'productCodeId', auto: true },
 }
 
-/* ===================== 위치 (단지 > 구역 > 상세구역) ===================== */
+/* ===================== 위치 ===================== */
 export const zones = {
-  async listAll() {
-    return rowsToCamel(unwrap(await supabase.from('zones').select('*').order('created_at', { ascending: true })))
-  },
-  async listByComplex(complexId) {
-    return rowsToCamel(unwrap(await supabase.from('zones').select('*').eq('complex_id', complexId).order('created_at', { ascending: true })))
-  },
-  create(data) {
-    return supabase.from('zones').insert(objToSnake(data)).select().single().then(unwrap).then(rowToCamel)
-  },
-  update(id, data) {
-    return supabase.from('zones').update(objToSnake(data)).eq('id', id).select().single().then(unwrap).then(rowToCamel)
-  },
-  async remove(id) {
-    // sub_zones 는 FK on delete cascade 로 함께 삭제됨
-    unwrap(await supabase.from('zones').delete().eq('id', id))
-  },
+  listAll: () => api.get('/zones'),
+  listByComplex: (complexId) => api.get('/zones', { complexId }),
+  create: (data) => api.post('/zones', data),
+  update: (id, data) => api.put(`/zones/${id}`, data),
+  remove: (id) => api.del(`/zones/${id}`),
 }
 
 export const subZones = {
-  async listAll() {
-    return rowsToCamel(unwrap(await supabase.from('sub_zones').select('*').order('created_at', { ascending: true })))
-  },
-  async listByZone(zoneId) {
-    return rowsToCamel(unwrap(await supabase.from('sub_zones').select('*').eq('zone_id', zoneId).order('created_at', { ascending: true })))
-  },
-  create(data) {
-    return supabase.from('sub_zones').insert(objToSnake(data)).select().single().then(unwrap).then(rowToCamel)
-  },
-  update(id, data) {
-    return supabase.from('sub_zones').update(objToSnake(data)).eq('id', id).select().single().then(unwrap).then(rowToCamel)
-  },
-  async remove(id) {
-    unwrap(await supabase.from('sub_zones').delete().eq('id', id))
-  },
+  listAll: () => api.get('/sub-zones'),
+  listByZone: (zoneId) => api.get('/sub-zones', { zoneId }),
+  create: (data) => api.post('/sub-zones', data),
+  update: (id, data) => api.put(`/sub-zones/${id}`, data),
+  remove: (id) => api.del(`/sub-zones/${id}`),
 }
 
-/* ===================== 보관위치 (실질적 최종 위치) ===================== */
 export const storageLocations = {
-  async list() {
-    return rowsToCamel(unwrap(await supabase.from('storage_locations').select('*').order('created_at', { ascending: false })))
-  },
-  async listByComplex(complexId) {
-    return rowsToCamel(unwrap(await supabase.from('storage_locations').select('*').eq('complex_id', complexId).order('code', { ascending: true })))
-  },
-  create(data) {
-    const { code, ...rest } = data
-    return supabase.from('storage_locations').insert(objToSnake(rest)).select().single().then(unwrap).then(rowToCamel)
-  },
-  update(id, data) {
-    const { code, ...rest } = data
-    return supabase.from('storage_locations').update(objToSnake(rest)).eq('id', id).select().single().then(unwrap).then(rowToCamel)
-  },
-  async remove(id) {
-    unwrap(await supabase.from('storage_locations').delete().eq('id', id))
-  },
+  list: () => api.get('/storage-locations'),
+  listByComplex: (complexId) => api.get('/storage-locations', { complexId }),
+  create: (data) => api.post('/storage-locations', data),
+  update: (id, data) => api.put(`/storage-locations/${id}`, data),
+  remove: (id) => api.del(`/storage-locations/${id}`),
 }
 
 /* ============================= 상품 ============================= */
 export const products = {
-  async list() {
-    return rowsToCamel(unwrap(await supabase.from('products').select('*').order('created_at', { ascending: false })))
-  },
-  async get(id) {
-    const { data, error } = await supabase.from('products').select('*').eq('id', id).maybeSingle()
-    if (error) throw error
-    return data ? rowToCamel(data) : null
-  },
-  create(data) {
-    const { code, skuSeq, ...rest } = data
-    return supabase.from('products').insert(objToSnake(rest)).select().single().then(unwrap).then(rowToCamel)
-  },
-  update(id, data) {
-    const { code, skuSeq, ...rest } = data
-    return supabase.from('products').update(objToSnake(rest)).eq('id', id).select().single().then(unwrap).then(rowToCamel)
-  },
-  async remove(id) {
-    unwrap(await supabase.from('products').delete().eq('id', id))
-  },
+  list: () => api.get('/products'),
+  get: (id) => api.get(`/products/${id}`),
+  create: (data) => api.post('/products', data),
+  update: (id, data) => api.put(`/products/${id}`, data),
+  remove: (id) => api.del(`/products/${id}`),
 }
 
 /* ======================== SKU (재고코드) ======================== */
-function skuStatus(qty, safety = 0) {
-  if (qty <= 0) return 'out'
-  if (safety > 0 && qty <= safety) return 'low'
-  return 'in_stock'
-}
-
 export const skus = {
-  async list() {
-    return rowsToCamel(unwrap(await supabase.from('skus').select('*').order('created_at', { ascending: false })))
-  },
-  async listByProduct(productId) {
-    return rowsToCamel(unwrap(await supabase.from('skus').select('*').eq('product_id', productId).order('code', { ascending: true })))
-  },
-  /** 연한관리 대상(소량)만 서버에서 조회 — 전체 풀로드 방지 */
-  async listLifecycle() {
-    return rowsToCamel(
-      unwrap(await supabase.from('skus').select('*').eq('lifecycle_enabled', true).order('next_replace_at', { ascending: true, nullsFirst: false }))
-    )
-  },
-  /**
-   * 서버측 페이징/필터/정렬/집계 (#1 풀로드 제거). 한 번 호출로 페이지 행 + 총계까지.
-   * @returns {{ rows, total, totalQty, lowCount, outCount }}
-   */
-  async page({
-    complexId = '', categoryId = '', productCodeId = '', productDetailId = '',
-    status = '', search = '', color = '', releaseYear = '', productionYear = '',
-    priceMin = '', priceMax = '', lifecycleOnly = false,
-    sort = 'recent', page = 1, pageSize = 10,
-  } = {}) {
+  list: () => api.get('/skus'),
+  listByProduct: (productId) => api.get(`/skus/by-product/${productId}`),
+  listLifecycle: () => api.get('/skus/lifecycle'),
+  async page(filters = {}) {
     const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
-    const data = unwrap(
-      await supabase.rpc('skus_page', {
-        p_complex: complexId || null,
-        p_category: categoryId || null,
-        p_product_code: productCodeId || null,
-        p_product_detail: productDetailId || null,
-        p_status: status || null,
-        p_search: search || null,
-        p_color: color || null,
-        p_release_year: releaseYear || null,
-        p_production_year: productionYear || null,
-        p_price_min: numOrNull(priceMin),
-        p_price_max: numOrNull(priceMax),
-        p_lifecycle_only: !!lifecycleOnly,
-        p_sort: sort || 'recent',
-        p_limit: pageSize,
-        p_offset: Math.max(0, (page - 1) * pageSize),
-      })
-    )
+    const r = await api.post('/skus/page', {
+      complexId: filters.complexId || null,
+      categoryId: filters.categoryId || null,
+      productCodeId: filters.productCodeId || null,
+      productDetailId: filters.productDetailId || null,
+      productId: filters.productId || null,
+      skuId: filters.skuId || null,
+      status: filters.status || null,
+      search: filters.search || null,
+      color: filters.color || null,
+      releaseYear: filters.releaseYear || null,
+      productionYear: filters.productionYear || null,
+      priceMin: numOrNull(filters.priceMin),
+      priceMax: numOrNull(filters.priceMax),
+      lifecycleOnly: !!filters.lifecycleOnly,
+      sort: filters.sort || 'recent',
+      page: filters.page || 1,
+      pageSize: filters.pageSize || 10,
+    })
     return {
-      rows: rowsToCamel(data?.rows || []),
-      total: data?.total || 0,
-      totalQty: data?.totalQty || 0,
-      lowCount: data?.lowCount || 0,
-      outCount: data?.outCount || 0,
+      rows: r?.rows || [],
+      total: r?.total || 0,
+      totalQty: r?.totalQty || 0,
+      lowCount: r?.lowCount || 0,
+      outCount: r?.outCount || 0,
     }
   },
-  /** 색상/출시년도/생산년도 셀렉트 옵션(전체 distinct) */
-  async filterOptions() {
-    const data = unwrap(await supabase.rpc('sku_filter_options'))
-    return { colors: data?.colors || [], releaseYears: data?.releaseYears || [], productionYears: data?.productionYears || [] }
-  },
-  /** 선택된 SKU들(여러 페이지 걸쳐 선택 가능)을 id로 일괄 조회 — QR 출력용 */
-  async listByIds(ids) {
-    if (!ids || !ids.length) return []
-    return rowsToCamel(unwrap(await supabase.from('skus').select('*').in('id', ids)))
-  },
-  /** 대시보드 요약(서버 집계) — 전체 SKU 풀로드 대체 */
-  async dashboardSummary() {
-    const d = unwrap(await supabase.rpc('dashboard_summary'))
-    return {
-      complexCount: d?.complexCount || 0,
-      productCount: d?.productCount || 0,
-      skuCount: d?.skuCount || 0,
-      totalQty: d?.totalQty || 0,
-      lowCount: d?.lowCount || 0,
-      outCount: d?.outCount || 0,
-      lowList: rowsToCamel(d?.lowList || []),
-      lifeSoon: d?.lifeSoon || 0,
-      lifeOver: d?.lifeOver || 0,
-      lifeList: rowsToCamel(d?.lifeList || []),
-    }
-  },
-  /** 단지별 묶기 요약 (단지별 SKU수/총재고/부족/품절) */
-  async groupByComplex(filters = {}) {
-    const data = unwrap(
-      await supabase.rpc('skus_group_by_complex', {
-        p_complex: filters.complexId || null,
-        p_category: filters.categoryId || null,
-        p_product_code: filters.productCodeId || null,
-        p_product_detail: filters.productDetailId || null,
-        p_status: filters.status || null,
-        p_search: filters.search || null,
-      })
-    )
-    return rowsToCamel(data || [])
-  },
-  async get(id) {
-    const { data, error } = await supabase.from('skus').select('*').eq('id', id).maybeSingle()
-    if (error) throw error
-    return data ? rowToCamel(data) : null
-  },
-  async getByCode(code) {
-    const { data, error } = await supabase.from('skus').select('*').eq('code', code).maybeSingle()
-    if (error) throw error
-    return data ? rowToCamel(data) : null
-  },
-  // 코드는 트리거가 상품코드 기반으로 채움. status/초기수량/QR 발급은 여기서 세팅
-  async create(data) {
-    const { code, ...rest } = data
-    const qty = Number(rest.qty) || 0
-    const safety = Number(rest.safetyStock) || 0
-    const payload = {
-      ...rest,
-      qty,
-      initialQty: qty,
-      safetyStock: safety,
-      totalIn: 0,
-      totalOut: 0,
-      status: skuStatus(qty, safety),
-      qrGenerated: true,
-    }
-    return rowToCamel(unwrap(await supabase.from('skus').insert(objToSnake(payload)).select().single()))
-  },
-  update(id, data) {
-    const { code, ...rest } = data
-    return supabase.from('skus').update(objToSnake(rest)).eq('id', id).select().single().then(unwrap).then(rowToCamel)
-  },
-  async remove(id) {
-    unwrap(await supabase.from('skus').delete().eq('id', id))
-  },
-  /** 보관위치 설정/삭제 (재고조정, admin) — RPC: 변경 시 이력 자동 기록 */
-  setLocation(skuId, loc) {
-    return supabase
-      .rpc('set_location', {
-        p_sku_id: skuId,
-        p_storage_location_id: loc.storageLocationId || null,
-        p_storage_location_code: loc.storageLocationCode || '',
-        p_zone_id: loc.zoneId || null,
-        p_zone_name: loc.zoneName || '',
-        p_sub_zone_id: loc.subZoneId || null,
-        p_sub_zone_name: loc.subZoneName || '',
-        p_location_label: loc.locationLabel || '',
-      })
-      .then(unwrap)
-  },
-  /** 위치 검증 (재고실사, admin) */
-  verifyLocation(skuId, actor) {
-    return supabase.from('skus')
-      .update({ location_verified_at: new Date().toISOString(), location_verified_by: actor.name })
-      .eq('id', skuId)
-      .then(unwrap)
-  },
+  filterOptions: () => api.get('/skus/filter-options'),
+  listByIds: (ids) => (!ids || !ids.length ? Promise.resolve([]) : api.post('/skus/by-ids', ids)),
+  dashboardSummary: () => api.get('/dashboard/summary'),
+  groupByComplex: (filters = {}) =>
+    api.post('/skus/group-by-complex', {
+      complexId: filters.complexId || null,
+      categoryId: filters.categoryId || null,
+      productCodeId: filters.productCodeId || null,
+      productDetailId: filters.productDetailId || null,
+      status: filters.status || null,
+      search: filters.search || null,
+    }),
+  get: (id) => api.get(`/skus/${id}`),
+  getByCode: (code) => api.get(`/skus/by-code/${encodeURIComponent(code)}`),
+  create: (data) => api.post('/skus', data),
+  update: (id, data) => api.put(`/skus/${id}`, data),
+  remove: (id) => api.del(`/skus/${id}`),
+  /** 위치 검증(실사) — 재고행 기준 */
+  verifyLocation: (stockId, actor) =>
+    api.post(`/stock/${stockId}/verify`, { name: actor?.name || '' }),
 }
 
-/* ===================== 재고 작업 (RPC 트랜잭션) ===================== */
-export async function applyStock(skuId, type, value, _actor, memo = '', reason = '') {
-  const data = unwrap(
-    await supabase.rpc('apply_stock', {
-      p_sku_id: skuId,
-      p_type: type,
-      p_value: Number(value),
-      p_memo: memo || '',
-      p_reason: reason || '',
-    })
-  )
-  return data // { before, after, delta }
+/* ===================== 재고 작업 ===================== */
+// 원장 컬럼 매핑: beforeQty/afterQty → before/after
+function mapMovement(m) {
+  if (!m) return m
+  return { ...m, before: m.beforeQty, after: m.afterQty }
+}
+
+/** 입고 — SKU(변형) + 보관위치(필수) + 수량 → 재고행 find/create */
+export async function inboundStock(skuId, storageLocationId, qty, memo = '', reason = '') {
+  return api.post('/stock/inbound', { skuId, storageLocationId, qty: Number(qty), memo: memo || '', reason: reason || '' })
+}
+
+/** 출고 — 재고행(stockId) 대상 */
+export async function outboundStock(stockId, qty, memo = '', reason = '') {
+  return api.post('/stock/outbound', { stockId, qty: Number(qty), memo: memo || '', reason: reason || '' })
+}
+
+/** 조정/실사 — 재고행(stockId) 대상. type: 'adjust' | 'audit' */
+export async function adjustStock(stockId, type, value, memo = '', reason = '') {
+  return api.post('/stock/adjust', { stockId, type, value: Number(value), memo: memo || '', reason: reason || '' })
+}
+
+/** 재고이동 — 출발 재고행(stockId) → 도착 보관위치(필수). 같은 SKU의 도착 재고행에 합류. */
+export async function transferStock(payload) {
+  return api.post('/stock/transfer', {
+    stockId: payload.stockId,
+    toStorageLocationId: payload.toStorageLocationId || null,
+    qty: payload.qty != null ? Number(payload.qty) : null,
+    memo: payload.memo || '',
+    reason: payload.reason || '',
+  })
 }
 
 export async function applyAuditBatch(items, actor, memo = '') {
   let changed = 0
   for (const it of items) {
-    await applyStock(it.skuId, 'audit', it.counted, actor, memo || '정기 실사', '')
+    await adjustStock(it.stockId, 'audit', it.counted, memo || '정기 실사', '')
     changed++
   }
   return { changed }
 }
 
-/** 입출고 취소(역분개) — 본인 등록 당일분만. 원장 보존 + 취소 전표 기록 (RPC) */
-export async function voidMovement(movementId, reason = '') {
-  return unwrap(await supabase.rpc('void_movement', { p_movement_id: movementId, p_reason: reason || '' }))
-}
-
 export async function listMovements(skuId, max = 100) {
-  return rowsToCamel(
-    unwrap(await supabase.from('stock_movements').select('*').eq('sku_id', skuId).order('at', { ascending: false }).limit(max))
-  )
+  const rows = await api.get('/movements', { skuId, max })
+  return (rows || []).map(mapMovement)
 }
 export async function recentMovements(max = 100) {
-  return rowsToCamel(
-    unwrap(await supabase.from('stock_movements').select('*').order('at', { ascending: false }).limit(max))
-  )
+  const rows = await api.get('/movements', { max })
+  return (rows || []).map(mapMovement)
 }
 
-/* ===================== 연한관리 (RPC) ===================== */
-export async function replaceLifecycle(skuId, _actor, reason = '') {
-  const data = unwrap(await supabase.rpc('replace_lifecycle', { p_sku_id: skuId, p_reason: reason || '' }))
-  return data // { replacedAt, nextReplaceAt }
+/** 입출고 취소(역분개) */
+export async function voidMovement(movementId, reason = '') {
+  return api.post(`/movements/${movementId}/void`, { reason: reason || '' })
 }
-/** 보관위치 변경 이력 */
+
+/* ===================== 연한관리 ===================== */
+export async function replaceLifecycle(stockId, _actor, reason = '') {
+  return api.post(`/stock/${stockId}/replace-lifecycle`, { reason: reason || '' })
+}
 export async function listLocationLogs(skuId, max = 50) {
-  return rowsToCamel(
-    unwrap(await supabase.from('location_logs').select('*').eq('sku_id', skuId).order('at', { ascending: false }).limit(max))
-  )
+  return api.get('/location-logs', { skuId, max })
 }
-
 export async function listLifecycleLogs(skuId, max = 50) {
-  return rowsToCamel(
-    unwrap(await supabase.from('lifecycle_logs').select('*').eq('sku_id', skuId).order('at', { ascending: false }).limit(max))
-  )
+  return api.get('/lifecycle-logs', { skuId, max })
 }
 
 /* ===================== 일별 집계 ===================== */
+// statDate → date 매핑
+function mapDaily(d) {
+  return d ? { ...d, date: d.statDate } : d
+}
 export async function getDailyStats(days = 7) {
-  return rowsToCamel(unwrap(await supabase.from('daily_stats').select('*').order('date', { ascending: false }).limit(days)))
+  const rows = await api.get('/daily-stats', { days })
+  return (rows || []).map(mapDaily)
 }
 export async function getTodayStats() {
-  const { data, error } = await supabase.from('daily_stats').select('*').eq('date', dateKeyLocal()).maybeSingle()
-  if (error) throw error
-  return data ? rowToCamel(data) : null
+  return mapDaily(await api.get('/daily-stats/today'))
 }
 
 /* ===================== 감사로그 ===================== */
-/** 하루 단위 조회 (date='YYYY-MM-DD'). module/byUserId 선택 필터 */
 export async function listAuditLogs({ date, module, byUserId } = {}, max = 500) {
-  let q = supabase.from('audit_logs').select('*').order('at', { ascending: false }).limit(max)
-  if (date) {
-    const start = new Date(date + 'T00:00:00')
-    const end = new Date(start)
-    end.setDate(end.getDate() + 1)
-    q = q.gte('at', start.toISOString()).lt('at', end.toISOString())
-  }
-  if (module) q = q.eq('module', module)
-  if (byUserId) q = q.eq('by_user_id', byUserId)
-  return rowsToCamel(unwrap(await q))
+  return api.get('/audit-logs', { date, module, byUserId, max })
 }
 export async function auditTopUsers(limit = 10) {
-  return rowsToCamel(unwrap(await supabase.rpc('audit_top_users', { p_limit: limit })) || [])
+  return (await api.get('/audit/top-users', { limit })) || []
 }
 export async function topProductsBySku(limit = 10) {
-  return rowsToCamel(unwrap(await supabase.rpc('top_products_by_sku', { p_limit: limit })) || [])
+  return (await api.get('/audit/top-products', { limit })) || []
 }
 export async function topChangedSkus(limit = 10) {
-  return rowsToCamel(unwrap(await supabase.rpc('top_changed_skus', { p_limit: limit })) || [])
+  return (await api.get('/audit/top-changed', { limit })) || []
 }
 
 /* =============================== 사용자/역할 =============================== */
 export const users = {
-  async get(uid) {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle()
-    if (error) throw error
-    return data ? rowToCamel(data) : null
-  },
-  async list() {
-    return rowsToCamel(unwrap(await supabase.from('profiles').select('*').order('created_at', { ascending: true })))
-  },
-  setRole(uid, role) {
-    return supabase.from('profiles').update({ role }).eq('id', uid).then(unwrap)
-  },
-  /** 입/출고 권한 부여/회수 (admin) */
-  setStockPerm(uid, canStock) {
-    return supabase.from('profiles').update({ can_stock: !!canStock }).eq('id', uid).then(unwrap)
-  },
+  get: (uid) => api.get(`/users/${uid}`),
+  list: () => api.get('/users'),
+  setRole: (uid, role) => api.put(`/users/${uid}/role`, { role }),
+  setStockPerm: (uid, canStock) => api.put(`/users/${uid}/stock-perm`, { canStock }),
 }

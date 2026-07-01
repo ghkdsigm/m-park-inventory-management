@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { products, complexes, categories, productCodes, productDetails } from '@/services/db'
+import { products, categories, productCodes, productDetails } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
 import { usePagination } from '@/composables/usePagination'
@@ -16,10 +16,9 @@ const toast = useToast()
 const { busy: saving, run } = useBusy()
 const confirm = ref(null)
 
-// 기준정보 체인 (단지·카테고리·제품코드 필수, 제품상세코드만 선택)
+// 기준정보 체인 (카테고리·제품코드 필수, 제품상세코드만 선택) — 단지는 재고(SKU) 축으로 분리
 const CHAIN = [
-  { col: 'complexes', board: complexes, label: '단지', idField: 'complexId', nameField: 'complexName', required: true },
-  { col: 'categories', board: categories, label: '카테고리', idField: 'categoryId', nameField: 'categoryName', parentId: 'complexId', required: true },
+  { col: 'categories', board: categories, label: '카테고리', idField: 'categoryId', nameField: 'categoryName', required: true },
   { col: 'productCodes', board: productCodes, label: '제품코드', idField: 'productCodeId', nameField: 'productCodeName', parentId: 'categoryId', required: true },
   { col: 'productDetails', board: productDetails, label: '제품상세코드', idField: 'productDetailId', nameField: 'productDetailName', parentId: 'productCodeId' },
 ]
@@ -78,7 +77,7 @@ watch(
 /* ---- 생성/수정 ---- */
 const modal = ref(false)
 const editing = ref(null)
-const form = reactive({ code: '', name: '', maker: '', barcode: '', note: '', mainImageUrl: '', images: [], sel: {} })
+const form = reactive({ code: '', name: '', maker: '', barcode: '', note: '', price: 0, mainImageUrl: '', images: [], sel: {} })
 const addingImg = ref(false)
 const galleryInput = ref(null)
 
@@ -106,16 +105,16 @@ function removeImage(url) {
 const formOptions = (idx) => options(idx, form.sel)
 
 function openCreate() {
-  if (!(data.complexes || []).length) return toast.error('먼저 단지를 1개 이상 등록하세요.')
+  if (!(data.categories || []).length) return toast.error('먼저 카테고리를 1개 이상 등록하세요.')
   editing.value = null
-  Object.assign(form, { code: '', name: '', maker: '', barcode: '', note: '', mainImageUrl: '', images: [], sel: {} })
+  Object.assign(form, { code: '', name: '', maker: '', barcode: '', note: '', price: 0, mainImageUrl: '', images: [], sel: {} })
   CHAIN.forEach((c) => (form.sel[c.col] = filterSel[c.col] || ''))
   modal.value = true
 }
 function openEdit(p) {
   editing.value = p
   Object.assign(form, {
-    code: p.code || '', name: p.name, maker: p.maker || '', barcode: p.barcode || '', note: p.note || '',
+    code: p.code || '', name: p.name, maker: p.maker || '', barcode: p.barcode || '', note: p.note || '', price: p.price ?? 0,
     mainImageUrl: p.mainImageUrl || '', images: Array.isArray(p.images) ? [...p.images] : [], sel: {},
   })
   CHAIN.forEach((c) => (form.sel[c.col] = p[c.idField] || ''))
@@ -142,6 +141,7 @@ async function save() {
     maker: form.maker.trim(),
     barcode: form.barcode.trim(),
     note: form.note.trim(),
+    price: Number(form.price) || 0,
     mainImageUrl: form.mainImageUrl || '',
     images: form.images || [],
   }
@@ -195,7 +195,7 @@ async function remove(p) {
 
 <template>
   <div>
-    <PageHeader title="상품관리" subtitle="실제 재고/판매 대상. 기준정보에 연결합니다. (단지만 필수, 나머지 선택)">
+    <PageHeader title="상품관리" subtitle="실제 재고/판매 대상. 카테고리에 연결합니다. 표준단가는 SKU가 상속합니다.">
       <button class="btn-primary" @click="openCreate">+ 상품 등록</button>
     </PageHeader>
 
@@ -236,7 +236,7 @@ async function remove(p) {
                 </div>
               </div>
             </td>
-            <td class="hidden px-4 py-3 text-xs text-slate-500 md:table-cell">{{ p.pathLabel || p.complexName }}</td>
+            <td class="hidden px-4 py-3 text-xs text-slate-500 md:table-cell">{{ p.pathLabel || '—' }}</td>
             <td class="hidden px-4 py-3 text-slate-500 lg:table-cell">{{ p.maker || '—' }}</td>
             <td class="px-4 py-3 text-right">
               <button class="btn-ghost btn-sm mr-1" @click="openEdit(p)">수정</button>
@@ -261,6 +261,12 @@ async function remove(p) {
         <div>
           <label class="label">상품명 *</label>
           <input v-model="form.name" class="input" placeholder="예: 깨끗한나라 순수 3겹" />
+        </div>
+
+        <div>
+          <label class="label">표준 단가</label>
+          <input v-model.number="form.price" type="number" min="0" class="input" placeholder="예: 5000" />
+          <p class="mt-1 text-[11px] text-slate-400">SKU 등록 시 이 단가를 기본값으로 상속합니다. (가격 단일 출처)</p>
         </div>
 
         <div>

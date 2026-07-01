@@ -12,7 +12,6 @@ const drawer = ref(false)
 const allNav = computed(() => [
   { name: 'dashboard', label: '대시보드', icon: 'grid', to: { name: 'dashboard' }, group: '' },
 
-  { name: 'complexes', label: '단지관리', icon: 'building', to: { name: 'complexes' }, group: '기준정보관리', admin: true },
   { name: 'categories', label: '카테고리관리', icon: 'folder', to: { name: 'categories' }, group: '기준정보관리', admin: true },
   { name: 'productCodes', label: '제품코드관리', icon: 'tag', to: { name: 'productCodes' }, group: '기준정보관리', admin: true },
   { name: 'productDetails', label: '제품상세코드관리', icon: 'detail', to: { name: 'productDetails' }, group: '기준정보관리', admin: true },
@@ -20,11 +19,13 @@ const allNav = computed(() => [
   { name: 'products', label: '상품관리', icon: 'box', to: { name: 'products' }, group: '상품관리', admin: true },
   { name: 'skus', label: 'SKU관리', icon: 'sku', to: { name: 'skus' }, group: '상품관리', admin: true },
 
+  { name: 'complexes', label: '단지관리', icon: 'building', to: { name: 'complexes' }, group: '위치관리', admin: true },
   { name: 'locations', label: '위치코드관리', icon: 'pin', to: { name: 'locations' }, group: '위치관리', admin: true },
   { name: 'storageLocations', label: '보관위치관리', icon: 'box', to: { name: 'storageLocations' }, group: '위치관리', admin: true },
 
   { name: 'inbound', label: '입고관리', icon: 'inbound', to: { name: 'inbound' }, group: '입/출고관리', stock: true },
   { name: 'outbound', label: '출고관리', icon: 'outbound', to: { name: 'outbound' }, group: '입/출고관리', stock: true },
+  { name: 'transfer', label: '재고이동', icon: 'transfer', to: { name: 'transfer' }, group: '입/출고관리', stock: true },
   { name: 'history', label: '입출고통합조회', icon: 'history', to: { name: 'history' }, group: '입/출고관리' },
   { name: 'lifecycle', label: '연한관리', icon: 'cycle', to: { name: 'lifecycle' }, group: '입/출고관리' },
 
@@ -66,6 +67,7 @@ const icons = {
   sku: 'M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12',
   inbound: 'M12 3v10m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2',
   outbound: 'M12 13V3m0 0l4 4m-4-4l-4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2',
+  transfer: 'M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4',
   adjust: 'M4 6h16M4 12h16M4 18h16M8 4v4M16 10v4M11 16v4',
   audit: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 104 0M8 14l2 2 4-4',
   status: 'M4 19V5M4 19h16M8 17v-6M12 17V9M16 17v-9',

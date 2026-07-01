@@ -1,12 +1,10 @@
-import { supabase } from '@/supabase'
+import { api } from '@/api'
 
 /**
- * 이미지 업로드/삭제 (Supabase Storage, 버킷: images).
- * - 업로드 전 클라이언트에서 리사이즈/압축
- * - 공개 URL 을 Firestore 대신 PostgreSQL 컬럼에 저장
+ * 이미지 업로드/삭제 (Spring 백엔드 /api/storage).
+ * - 업로드 전 클라이언트에서 리사이즈/압축 (기존 동작 유지)
+ * - 서버가 디스크에 저장하고 공개 URL(/files/...) 을 반환
  */
-const BUCKET = 'images'
-
 function loadImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -37,31 +35,17 @@ async function compress(file, max = 1024, quality = 0.82) {
 export async function uploadImage(file, prefix = 'images') {
   if (!file || !file.type?.startsWith('image/')) throw new Error('이미지 파일만 업로드할 수 있습니다.')
   const blob = await compress(file)
-  const name = `${Date.now()}-${Math.round(Math.random() * 1e6)}.jpg`
-  const path = `${prefix}/${name}`
-  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
-    contentType: 'image/jpeg',
-    upsert: false,
-  })
-  if (error) throw error
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
-  return { url: data.publicUrl, path }
-}
-
-/** 공개 URL 에서 버킷 내 경로 추출 */
-function pathFromUrl(url) {
-  const marker = `/storage/v1/object/public/${BUCKET}/`
-  const i = url.indexOf(marker)
-  return i === -1 ? null : url.slice(i + marker.length)
+  const form = new FormData()
+  form.append('file', blob, `${Date.now()}.jpg`)
+  form.append('prefix', prefix)
+  return api.upload('/storage/upload', form) // { url, path }
 }
 
 /** URL 로 Storage 객체 삭제. 실패해도 무시 */
 export async function deleteImageByUrl(url) {
   if (!url) return
-  const path = pathFromUrl(url)
-  if (!path) return
   try {
-    await supabase.storage.from(BUCKET).remove([path])
+    await api.del('/storage', { url })
   } catch (e) {
     // 무시
   }

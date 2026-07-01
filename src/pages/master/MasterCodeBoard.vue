@@ -18,7 +18,7 @@ const confirm = ref(null)
 // 기준정보 4단계 메타 (idField/nameField = 다른 컬렉션이 이 단계를 참조할 때 쓰는 비정규화 필드)
 const META = {
   complexes: { board: complexes, label: '단지', sub: '최상위 분류 (예: 서울창고, 부산창고)', idField: 'complexId', nameField: 'complexName', parent: null },
-  categories: { board: categories, label: '카테고리', sub: '단지 하위 분류 (예: 가전/디지털, 생활용품)', idField: 'categoryId', nameField: 'categoryName', parent: 'complexes' },
+  categories: { board: categories, label: '카테고리', sub: '최상위 분류 (예: 가전/디지털, 생활용품)', idField: 'categoryId', nameField: 'categoryName', parent: null },
   productCodes: { board: productCodes, label: '제품코드', sub: '카테고리 하위 분류 (예: 모니터, 화장지)', idField: 'productCodeId', nameField: 'productCodeName', parent: 'categories' },
   productDetails: { board: productDetails, label: '제품상세코드', sub: '제품코드 하위 분류 (예: 휴대용 모니터, 두루마리 휴지)', idField: 'productDetailId', nameField: 'productDetailName', parent: 'productCodes' },
 }

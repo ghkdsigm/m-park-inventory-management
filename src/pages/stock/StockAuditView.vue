@@ -56,9 +56,9 @@ async function fetchPage() {
     total.value = r.total
     // 시스템값/메타 스냅샷 + 미입력 항목은 시스템값으로 초기화(입력값은 보존)
     r.rows.forEach((s) => {
-      sysQty[s.id] = s.qty
-      skuMeta[s.id] = { code: s.code }
-      if (!(s.id in counts)) counts[s.id] = s.qty
+      sysQty[s.stockId] = s.qty
+      skuMeta[s.stockId] = { code: s.code }
+      if (!(s.stockId in counts)) counts[s.stockId] = s.qty
     })
   } catch (e) {
     toast.error('불러오기 실패: ' + (e.message || e.code))
@@ -89,7 +89,7 @@ watch(page, fetchPage)
 let searchTimer = null
 watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; fetchPage() }, 350) })
 
-const categoryOptions = computed(() => (fComplex.value ? categoryList.value.filter((c) => c.complexId === fComplex.value) : categoryList.value))
+const categoryOptions = computed(() => categoryList.value)
 const pcOptions = computed(() => (fCategory.value ? productCodeList.value.filter((p) => p.categoryId === fCategory.value) : productCodeList.value))
 const pdOptions = computed(() => (fProductCode.value ? productDetailList.value.filter((d) => d.productCodeId === fProductCode.value) : productDetailList.value))
 watch(fComplex, () => { fCategory.value = ''; fProductCode.value = ''; fProductDetail.value = '' })
@@ -97,7 +97,7 @@ watch(fCategory, () => { fProductCode.value = ''; fProductDetail.value = '' })
 watch(fProductCode, () => { fProductDetail.value = '' })
 
 function diffOf(s) {
-  const c = counts[s.id]
+  const c = counts[s.stockId]
   if (c === '' || c == null) return 0
   return Number(c) - Number(s.qty)
 }
@@ -144,7 +144,7 @@ async function verifyLocations() {
 }
 function resetCounts() {
   clearCounts()
-  rows.value.forEach((s) => (counts[s.id] = s.qty))
+  rows.value.forEach((s) => (counts[s.stockId] = s.qty))
   toast.info('실사수량을 시스템 재고로 초기화했습니다.')
 }
 
@@ -161,7 +161,7 @@ async function confirmAudit() {
   if (!ok) return
   working.value = true
   try {
-    const items = changed.value.map((x) => ({ skuId: x.id, counted: x.counted }))
+    const items = changed.value.map((x) => ({ stockId: x.id, counted: x.counted }))
     const r = await applyAuditBatch(items, auth.actor, memo.value)
     toast.success(`실사 확정 완료 · ${r.changed}건 반영`)
     clearCounts()
@@ -221,7 +221,7 @@ async function confirmAudit() {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="s in displayRows" :key="s.id" class="hover:bg-slate-50/60" :class="diffOf(s) !== 0 ? 'bg-amber-50/40' : ''">
+          <tr v-for="s in displayRows" :key="s.stockId" class="hover:bg-slate-50/60" :class="diffOf(s) !== 0 ? 'bg-amber-50/40' : ''">
             <td class="px-3 py-2">
               <div class="flex items-center gap-2.5">
                 <img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" />
@@ -234,7 +234,7 @@ async function confirmAudit() {
             </td>
             <td class="px-3 py-2">
               <label class="flex items-center gap-1.5">
-                <input type="checkbox" class="rounded border-slate-300" :checked="locSel.has(s.id)" @change="toggleLoc(s.id)" />
+                <input type="checkbox" class="rounded border-slate-300" :checked="locSel.has(s.stockId)" @change="toggleLoc(s.stockId)" />
                 <span class="min-w-0">
                   <span v-if="s.locationLabel" class="block truncate text-xs text-slate-600">📍 {{ s.locationLabel }}</span>
                   <span v-else class="block text-xs text-slate-300">위치 미지정</span>
@@ -244,7 +244,7 @@ async function confirmAudit() {
             </td>
             <td class="px-3 py-2 text-right font-semibold text-slate-500">{{ s.qty }}</td>
             <td class="px-3 py-2 text-center">
-              <input v-model.number="counts[s.id]" type="number" min="0" class="input w-24 text-center" />
+              <input v-model.number="counts[s.stockId]" type="number" min="0" class="input w-24 text-center" />
             </td>
             <td class="px-3 py-2 text-right font-bold" :class="diffOf(s) === 0 ? 'text-slate-300' : diffOf(s) < 0 ? 'text-rose-500' : 'text-emerald-600'">
               {{ diffOf(s) > 0 ? '+' : '' }}{{ diffOf(s) }}
