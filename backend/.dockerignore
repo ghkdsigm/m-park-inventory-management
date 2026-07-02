@@ -2,5 +2,5 @@ build/
 .gradle/
 .idea/
 *.iml
-uploads/
 *.log
+# uploads/ 는 시드 이미지 번들을 위해 일부러 포함(제외하지 않음)
