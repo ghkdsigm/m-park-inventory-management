@@ -95,3 +95,38 @@ STORAGE_PUBLIC_BASE_URL = https://<백엔드도메인>/files
 - **모바일 QR**: QR 이 인코딩하는 접속 URL 이 배포 도메인을 가리키는지 확인(생성 시점 origin 기준). 로컬에서 만든 QR 은 localhost 를 가리킬 수 있음.
 - **한글**: Railway MySQL 8 기본 `utf8mb4` + 마이그레이션이 테이블별 `utf8mb4` 지정 → 한글 정상.
 - **나중에 AWS 이전 시**: 백엔드는 같은 Docker 이미지 그대로 ECS/EB 등에 올리고, DB 는 RDS(MySQL), 이미지 스토리지는 S3 로 교체(현재는 로컬 디스크 `STORAGE_DIR`). S3 전환 시 스토리지 어댑터만 바꾸면 됨.
+
+---
+
+## D. (선택) 로컬 데이터 → Railway MySQL 이관
+
+로컬에서 쌓아둔 데이터(상품/SKU/재고 등)를 그대로 옮기고 싶을 때만. 새로 입력할 거면 이 단계는 건너뛴다.
+
+> ⚠️ **반드시 A(백엔드 배포)가 끝나 Flyway 가 Railway 에 테이블을 만든 뒤** 실행한다. (스키마는 Flyway 가 만들고, 여기선 **데이터만** 넣는다.)
+> ⚠️ Railway MySQL 의 기본 DB 이름은 보통 **`railway`** — 백엔드가 `${{MySQL.MYSQLDATABASE}}` 로 접속하는 바로 그 값이다. 아래 `<RW_DB>` 에 그 값을 넣는다.
+> ⚠️ Railway DB 는 **비어 있어야** 안전하다(회원가입 등으로 이미 데이터가 있으면 users 등에서 PK/유니크 충돌 가능).
+
+### 1) 로컬 데이터 덤프 (데이터만, flyway 이력 제외)
+로컬 MySQL 은 도커 컨테이너 `mpark-mysql` 에서 돈다. FK 순서 문제를 피하려 맨 앞에 `SET FOREIGN_KEY_CHECKS=0` 을 넣어 덤프한다.
+```
+docker exec mpark-mysql sh -c "(echo 'SET FOREIGN_KEY_CHECKS=0;'; mysqldump -uroot -proot --no-create-info --single-transaction --set-gtid-purged=OFF --ignore-table=mpark_wms.flyway_schema_history mpark_wms) > /tmp/mpark_data.sql"
+docker cp mpark-mysql:/tmp/mpark_data.sql ./mpark_data.sql
+```
+> `docker cp` 로 파일을 꺼내므로 Windows PowerShell 의 UTF-16 리다이렉트 문제(깨짐) 없이 안전하다.
+
+### 2) Railway 외부 접속 정보 확인
+Railway → **MySQL 서비스 → Connect(또는 Variables)** 에서 퍼블릭(프록시) 접속값 확인:
+- Host: 예 `caboose.proxy.rlwy.net` (`RAILWAY_TCP_PROXY_DOMAIN`)
+- Port: 예 `12345` (`RAILWAY_TCP_PROXY_PORT`)
+- User / Password / Database(=`<RW_DB>`, 보통 `railway`)
+
+### 3) Railway 로 import (로컬에 mysql 클라이언트 없어도 도커로)
+```
+docker run --rm -i mysql:8.0 mysql -h <HOST> -P <PORT> -u <USER> -p"<PASSWORD>" <RW_DB> < mpark_data.sql
+```
+비밀번호에 특수문자가 있을 수 있으니 `-p"..."` 처럼 따옴표로 감싼다.
+
+### 4) 이미지 파일은 별도 (주의)
+업로드 이미지(상품/SKU)는 **DB 가 아니라 서버 디스크(`STORAGE_DIR`)** 에 있다. 이 이관으론 **안 옮겨진다**.
+- DB 의 `imageUrl` 은 넘어가지만 실제 파일이 Railway 에 없으면 **이미지가 깨진다.**
+- 필요하면 로컬 업로드 폴더(도커 볼륨 `backend_uploads`)의 파일을 Railway 볼륨(`/app/uploads`)에 복사하거나, 배포 후 다시 업로드한다.
