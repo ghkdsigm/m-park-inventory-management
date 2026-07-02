@@ -9,8 +9,9 @@ public final class StockDtos {
     /** 입고 — SKU + 보관위치(필수) + 수량. 위치의 단지로 재고행을 find/create. */
     public record InboundRequest(String skuId, String storageLocationId, Integer qty, String memo, String reason) {}
 
-    /** 출고 — 재고행 대상 */
-    public record OutboundRequest(String stockId, Integer qty, String memo, String reason) {}
+    /** 출고 — 재고행 대상 (+ 출고 상세: 사용처/요청부서/요청자/담당자) */
+    public record OutboundRequest(String stockId, Integer qty, String memo, String reason,
+                                  String usagePlace, String requestDept, String requester, String handler) {}
 
     /** 조정/실사 — 재고행 대상. type: adjust | audit */
     public record AdjustRequest(String stockId, String type, Integer value, String memo, String reason) {}
@@ -21,6 +22,9 @@ public final class StockDtos {
     public record ReplaceRequest(String reason) {}
     public record LifecycleResult(LocalDateTime replacedAt, LocalDateTime nextReplaceAt) {}
     public record VerifyRequest(String name) {}
+
+    /** 실사 오차 정상처리 — 재고행 대상 + 사유 */
+    public record AuditResolveRequest(String reason) {}
 
     /** 재고이동 — 출발 재고행 → 도착 보관위치(필수). 같은 SKU의 도착 재고행에 합류. */
     public record TransferRequest(String stockId, String toStorageLocationId, Integer qty, String memo, String reason) {}

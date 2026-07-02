@@ -51,7 +51,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/users/**", "/api/audit-logs", "/api/audit/**").hasRole("ADMIN")
                         // SKU 조회용 POST + 스톡 작업 (세부 권한은 서비스에서)
                         .requestMatchers(HttpMethod.POST,
-                                "/api/skus/page", "/api/skus/group-by-complex", "/api/skus/by-ids",
+                                "/api/skus/page", "/api/skus/page-by-sku", "/api/skus/group-by-complex", "/api/skus/by-ids",
                                 "/api/stock/apply", "/api/movements/*/void", "/api/skus/*/replace-lifecycle").authenticated()
                         // 그 외 쓰기(생성/수정/삭제) = 관리자
                         .requestMatchers(HttpMethod.POST, "/api/**").hasRole("ADMIN")

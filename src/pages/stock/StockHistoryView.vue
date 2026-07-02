@@ -5,7 +5,7 @@ import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import Pager from '@/components/ui/Pager.vue'
 import { resolveImage } from '@/utils/image'
-import { fmtDateTime, fmtDate } from '@/utils/date'
+import { fmtDateTime } from '@/utils/date'
 import { specText } from '@/utils/sku'
 
 const toast = useToast()
@@ -35,6 +35,7 @@ const selectedSku = ref(null)
 const selected = selectedSku
 const moves = ref([])
 const locLogs = ref([])
+const locStocks = ref([]) // 선택 SKU의 위치별 재고 분포
 const detailLoading = ref(false)
 
 const typeMeta = {
@@ -53,7 +54,7 @@ const statusMeta = {
 async function fetchPage(autoSelect = false) {
   loading.value = true
   try {
-    const r = await skus.page({
+    const r = await skus.pageBySku({
       complexId: fComplex.value,
       color: fColor.value,
       releaseYear: fRelease.value,
@@ -95,15 +96,23 @@ watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => 
 
 function select(s) {
   selectedSku.value = s
-  loadDetail(s.id)
+  loadDetail(s.skuId)
 }
-async function loadDetail(id) {
-  if (!id) return
+async function loadDetail(skuId) {
+  if (!skuId) return
   detailLoading.value = true
   moves.value = []
   locLogs.value = []
+  locStocks.value = []
   try {
-    ;[moves.value, locLogs.value] = await Promise.all([listMovements(id, 100), listLocationLogs(id, 50)])
+    const [mv, ll, st] = await Promise.all([
+      listMovements(skuId, 100),
+      listLocationLogs(skuId, 50),
+      skus.page({ skuId, complexId: fComplex.value, pageSize: 200 }),
+    ])
+    moves.value = mv
+    locLogs.value = ll
+    locStocks.value = (st.rows || []).filter((r) => r.qty > 0)
   } catch (e) {
     toast.error('이력 조회 실패: ' + (e.message || e.code))
   } finally {
@@ -130,10 +139,10 @@ function exportCsv() {
 
 <template>
   <div>
-    <PageHeader title="입출고 통합조회" subtitle="SKU를 선택하면 우측에 수량·위치 변동 이력이 모두 표시됩니다." />
+    <PageHeader title="입출고 통합조회" subtitle="SKU를 선택하면 우측에 위치별 재고와 수량·위치 변동 이력이 모두 표시됩니다." />
 
     <div class="grid gap-4 lg:grid-cols-5">
-      <!-- 좌: SKU 리스트 (최근 변경순) -->
+      <!-- 좌: SKU 리스트 (SKU 단위·최근 변경순) -->
       <div class="card flex flex-col lg:col-span-2">
         <div class="flex flex-wrap items-center gap-1.5 border-b border-slate-100 p-3">
           <select v-model="fComplex" class="input w-auto text-sm">
@@ -167,20 +176,24 @@ function exportCsv() {
           <div v-else-if="!rows.length" class="p-10 text-center text-sm text-slate-400">SKU가 없습니다.</div>
           <button
             v-for="s in rows"
-            :key="s.id"
+            :key="s.skuId"
             class="flex w-full items-center gap-2.5 border-b border-slate-50 px-3 py-2.5 text-left hover:bg-slate-50"
-            :class="selected?.id === s.id ? 'bg-brand-50' : ''"
+            :class="selected?.skuId === s.skuId ? 'bg-brand-50' : ''"
             @click="select(s)"
           >
             <img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" />
             <div class="min-w-0 flex-1">
               <span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span>
               <span class="ml-1 text-sm font-medium text-slate-700">{{ s.productName }}</span>
-              <p class="truncate text-[11px] text-slate-400">{{ s.pathLabel }}</p>
+              <p class="truncate text-[11px] text-slate-400">
+                <span v-if="s.locationCount > 0">📍 {{ s.locationCount }}개 위치</span>
+                <span v-else>위치 미지정</span>
+                <span v-if="s.lastMovedAt"> · {{ fmtDateTime(s.lastMovedAt) }}</span>
+              </p>
             </div>
             <div class="shrink-0 text-right">
               <p class="text-sm font-semibold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-700'">{{ s.qty }}개</p>
-              <p class="text-[10px] text-slate-400">{{ s.lastMovedAt ? fmtDateTime(s.lastMovedAt) : '-' }}</p>
+              <span class="badge text-[10px]" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span>
             </div>
           </button>
         </div>
@@ -191,7 +204,7 @@ function exportCsv() {
       <div class="lg:col-span-3">
         <div v-if="!selected" class="card p-10 text-center text-sm text-slate-400">왼쪽에서 SKU를 선택하세요.</div>
         <div v-else class="space-y-4">
-          <!-- 헤더: 현재 재고/위치 -->
+          <!-- 헤더: 현재 재고(전 위치 합산) -->
           <div class="card overflow-hidden">
             <div class="flex gap-4 p-4">
               <img :src="resolveImage(selected)" class="h-24 w-24 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="" />
@@ -200,65 +213,88 @@ function exportCsv() {
                 <p class="text-sm text-slate-600">{{ selected.productName }}<span v-if="specText(selected)" class="text-slate-400"> · {{ specText(selected) }}</span></p>
                 <p class="mt-0.5 text-xs text-slate-400">{{ selected.pathLabel }}</p>
                 <div class="mt-1.5 flex items-center gap-2">
-                  <span class="text-sm text-slate-400">현재 재고</span>
+                  <span class="text-sm text-slate-400">총 재고</span>
                   <span class="text-xl font-extrabold" :class="selected.qty <= 0 ? 'text-rose-500' : 'text-brand-600'">{{ selected.qty }}</span>
                   <span class="badge" :class="statusMeta[selected.status]?.c">{{ statusMeta[selected.status]?.t }}</span>
+                  <span v-if="selected.locationCount > 0" class="text-xs text-slate-400">· {{ selected.locationCount }}개 위치에 분산</span>
                 </div>
               </div>
-            </div>
-            <div class="border-t border-slate-100 bg-slate-50/60 px-4 py-2 text-sm">
-              📍 현재 위치:
-              <b class="text-slate-700">{{ selected.locationLabel ? selected.complexName + ' › ' + selected.locationLabel : (selected.complexName || '위치 미지정') }}</b>
-              <span v-if="selected.storageLocationCode" class="font-mono text-xs text-slate-400"> ({{ selected.storageLocationCode }})</span>
-              <span v-if="selected.locationVerifiedAt" class="ml-1 text-xs text-emerald-600">✓ {{ selected.locationVerifiedBy }} 검증</span>
             </div>
           </div>
 
           <div v-if="detailLoading" class="card p-8 text-center text-sm text-slate-400">이력 불러오는 중…</div>
 
-          <!-- 수량 변동 이력 -->
-          <div v-else class="card p-4">
-            <div class="mb-2 flex items-center justify-between">
-              <h3 class="text-sm font-bold text-slate-700">수량 변동 이력 <span class="text-slate-400">({{ moves.length }})</span></h3>
-              <button class="btn-ghost btn-sm" @click="exportCsv">CSV</button>
+          <template v-else>
+            <!-- 위치별 재고 -->
+            <div class="card p-4">
+              <h3 class="mb-2 text-sm font-bold text-slate-700">위치별 재고 <span class="text-slate-400">({{ locStocks.length }})</span></h3>
+              <div v-if="!locStocks.length" class="py-6 text-center text-sm text-slate-300">재고가 있는 위치가 없습니다.</div>
+              <ul v-else class="divide-y divide-slate-50 text-sm">
+                <li v-for="st in locStocks" :key="st.stockId" class="flex items-center justify-between gap-2 py-2">
+                  <div class="min-w-0">
+                    <p class="text-slate-700">📍 {{ st.complexName || '미지정' }}<span v-if="st.locationLabel" class="text-slate-400"> › {{ st.locationLabel }}</span>
+                      <span v-if="st.storageLocationCode" class="font-mono text-xs text-slate-400"> ({{ st.storageLocationCode }})</span>
+                    </p>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-2">
+                    <span class="badge text-[10px]" :class="statusMeta[st.status]?.c">{{ statusMeta[st.status]?.t }}</span>
+                    <span class="text-sm font-semibold" :class="st.qty <= 0 ? 'text-rose-500' : 'text-slate-700'">{{ st.qty }}개</span>
+                  </div>
+                </li>
+              </ul>
             </div>
-            <div v-if="!moves.length" class="py-6 text-center text-sm text-slate-300">변동 이력이 없습니다.</div>
-            <ul v-else class="divide-y divide-slate-50 text-sm">
-              <li v-for="m in moves" :key="m.id" class="flex items-start justify-between gap-2 py-2">
-                <div class="min-w-0">
-                  <span class="badge" :class="typeMeta[m.type]?.c">{{ typeMeta[m.type]?.t || m.type }}</span>
-                  <span class="ml-1 text-slate-400">{{ m.before }}→{{ m.after }}</span>
-                  <span class="ml-1 font-bold" :class="m.delta >= 0 ? 'text-emerald-600' : 'text-rose-500'">{{ m.delta > 0 ? '+' : '' }}{{ m.delta }}</span>
-                  <p class="mt-0.5 text-xs text-slate-500">
-                    <span v-if="m.reason" class="badge mr-1 bg-amber-50 text-[10px] text-amber-700">{{ m.reason }}</span>{{ m.memo || '' }}
-                  </p>
-                </div>
-                <div class="shrink-0 text-right text-xs text-slate-400">
-                  <p class="text-slate-600">{{ m.byName }}</p>
-                  <p>{{ fmtDateTime(m.at) }}</p>
-                </div>
-              </li>
-            </ul>
-          </div>
 
-          <!-- 위치 변경 이력 -->
-          <div v-if="!detailLoading" class="card p-4">
-            <h3 class="mb-2 text-sm font-bold text-slate-700">위치 변경 이력 <span class="text-slate-400">({{ locLogs.length }})</span></h3>
-            <div v-if="!locLogs.length" class="py-6 text-center text-sm text-slate-300">위치 변경 이력이 없습니다.</div>
-            <ul v-else class="divide-y divide-slate-50 text-sm">
-              <li v-for="l in locLogs" :key="l.id" class="flex items-center justify-between gap-2 py-2">
-                <div class="min-w-0">
-                  <p class="text-slate-700">📍 {{ l.fromLabel || '미지정' }} <span class="text-slate-300">→</span> {{ l.toLabel || '미지정' }}
-                    <span v-if="l.storageLocationCode" class="font-mono text-xs text-slate-400">({{ l.storageLocationCode }})</span>
-                  </p>
-                </div>
-                <div class="shrink-0 text-right text-xs text-slate-400">
-                  <p class="text-slate-600">{{ l.byName }}</p>
-                  <p>{{ fmtDateTime(l.at) }}</p>
-                </div>
-              </li>
-            </ul>
-          </div>
+            <!-- 수량 변동 이력 -->
+            <div class="card p-4">
+              <div class="mb-2 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-slate-700">수량 변동 이력 <span class="text-slate-400">({{ moves.length }})</span></h3>
+                <button class="btn-ghost btn-sm" @click="exportCsv">CSV</button>
+              </div>
+              <div v-if="!moves.length" class="py-6 text-center text-sm text-slate-300">변동 이력이 없습니다.</div>
+              <ul v-else class="divide-y divide-slate-50 text-sm">
+                <li v-for="m in moves" :key="m.id" class="flex items-start justify-between gap-2 py-2">
+                  <div class="min-w-0">
+                    <span class="badge" :class="typeMeta[m.type]?.c">{{ typeMeta[m.type]?.t || m.type }}</span>
+                    <span class="ml-1 text-slate-400">{{ m.before }}→{{ m.after }}</span>
+                    <span class="ml-1 font-bold" :class="m.delta >= 0 ? 'text-emerald-600' : 'text-rose-500'">{{ m.delta > 0 ? '+' : '' }}{{ m.delta }}</span>
+                    <p class="mt-0.5 text-xs text-slate-500">
+                      <span v-if="m.pathLabel" class="text-slate-400">📍 {{ m.pathLabel }} · </span>
+                      <span v-if="m.reason" class="badge mr-1 bg-amber-50 text-[10px] text-amber-700">{{ m.reason }}</span>{{ m.memo || '' }}
+                    </p>
+                    <p v-if="m.usagePlace || m.requestDept || m.requester || m.handler" class="mt-0.5 text-[11px] text-slate-400">
+                      <span v-if="m.usagePlace">사용처: {{ m.usagePlace }}</span>
+                      <span v-if="m.requestDept"> · 요청부서: {{ m.requestDept }}</span>
+                      <span v-if="m.requester"> · 요청자: {{ m.requester }}</span>
+                      <span v-if="m.handler"> · 담당자: {{ m.handler }}</span>
+                    </p>
+                  </div>
+                  <div class="shrink-0 text-right text-xs text-slate-400">
+                    <p class="text-slate-600">{{ m.byName }}</p>
+                    <p>{{ fmtDateTime(m.at) }}</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <!-- 위치 변경 이력 -->
+            <div class="card p-4">
+              <h3 class="mb-2 text-sm font-bold text-slate-700">위치 변경 이력 <span class="text-slate-400">({{ locLogs.length }})</span></h3>
+              <div v-if="!locLogs.length" class="py-6 text-center text-sm text-slate-300">위치 변경 이력이 없습니다.</div>
+              <ul v-else class="divide-y divide-slate-50 text-sm">
+                <li v-for="l in locLogs" :key="l.id" class="flex items-center justify-between gap-2 py-2">
+                  <div class="min-w-0">
+                    <p class="text-slate-700">📍 {{ l.fromLabel || '미지정' }} <span class="text-slate-300">→</span> {{ l.toLabel || '미지정' }}
+                      <span v-if="l.storageLocationCode" class="font-mono text-xs text-slate-400">({{ l.storageLocationCode }})</span>
+                    </p>
+                  </div>
+                  <div class="shrink-0 text-right text-xs text-slate-400">
+                    <p class="text-slate-600">{{ l.byName }}</p>
+                    <p>{{ fmtDateTime(l.at) }}</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </template>
         </div>
       </div>
     </div>

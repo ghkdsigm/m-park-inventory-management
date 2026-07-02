@@ -34,6 +34,11 @@ const ADJUST_REASONS = ['파손', '분실', '도난', '오입력 정정', '유�
 const reason = ref('')
 const reasonOptions = computed(() => (isInbound.value ? IN_REASONS : op.value === 'out' ? OUT_REASONS : ADJUST_REASONS))
 
+// 출고 상세
+const requestDept = ref('')
+const requester = ref('')
+const handler = ref('')
+
 const loading = ref(true)
 const search = ref('')
 const qty = ref(1)
@@ -41,8 +46,10 @@ const memo = ref('')
 const working = ref(false)
 const selected = ref(null) // 입고=변형 SKU, 그외=재고행(StockRow)
 const movements = ref([])
+const imgOpen = ref(false)
 
 const variants = ref([])   // 입고용 SKU(변형) 목록
+const locBySku = ref({})   // skuId → 현재 재고 위치들(재고행)
 const rows = ref([])       // 출고/조정/실사용 재고행 목록
 const complexList = ref([])
 const storageLocs = ref([])
@@ -67,7 +74,8 @@ const inComplex = ref('')
 const inZone = ref('')
 const inSub = ref('')
 const inLoc = ref('')
-const locForComplex = computed(() => storageLocs.value.filter((l) => l.complexId === inComplex.value))
+// 입고: 재고창고/공용만 (사용처 전용 제외)
+const locForComplex = computed(() => storageLocs.value.filter((l) => l.complexId === inComplex.value && l.type !== 'usage'))
 const zoneChoices = computed(() => {
   const m = new Map()
   locForComplex.value.forEach((l) => l.zoneId && m.set(l.zoneId, l.zoneName))
@@ -81,6 +89,36 @@ const subChoices = computed(() => {
 const locOptions = computed(() => locForComplex.value.filter((l) => (!inZone.value || l.zoneId === inZone.value) && (!inSub.value || l.subZoneId === inSub.value)))
 watch(inComplex, () => { inZone.value = ''; inSub.value = ''; inLoc.value = '' })
 watch(inZone, () => { inSub.value = ''; inLoc.value = '' })
+
+// 출고 사용처 선택 (사용처/공용 위치코드, 재고창고 전용 제외)
+const outComplex = ref('')
+const outZone = ref('')
+const outSub = ref('')
+const outLoc = ref('')
+const outLocForComplex = computed(() => storageLocs.value.filter((l) => l.complexId === outComplex.value && l.type !== 'warehouse'))
+const outZoneChoices = computed(() => {
+  const m = new Map()
+  outLocForComplex.value.forEach((l) => l.zoneId && m.set(l.zoneId, l.zoneName))
+  return [...m].map(([id, name]) => ({ id, name }))
+})
+const outSubChoices = computed(() => {
+  const m = new Map()
+  outLocForComplex.value.forEach((l) => { if (l.zoneId === outZone.value && l.subZoneId) m.set(l.subZoneId, l.subZoneName) })
+  return [...m].map(([id, name]) => ({ id, name }))
+})
+const outLocOptions = computed(() => outLocForComplex.value.filter((l) => (!outZone.value || l.zoneId === outZone.value) && (!outSub.value || l.subZoneId === outSub.value)))
+watch(outComplex, () => { outZone.value = ''; outSub.value = ''; outLoc.value = '' })
+watch(outZone, () => { outSub.value = ''; outLoc.value = '' })
+const outLocLabel = computed(() => {
+  const l = storageLocs.value.find((x) => x.id === outLoc.value)
+  if (!l) return ''
+  const path = [l.complexName, l.locationLabel || l.name].filter(Boolean).join(' › ')
+  return l.code ? `${path} (${l.code})` : path
+})
+// 폐기/반품출고는 사용처 개념이 없어 숨김
+const NO_USAGE_REASONS = ['폐기', '반품출고']
+const showUsage = computed(() => op.value === 'out' && !NO_USAGE_REASONS.includes(reason.value))
+watch(reason, () => { if (!showUsage.value) { outComplex.value = ''; outZone.value = ''; outSub.value = ''; outLoc.value = '' } })
 
 // 재고행 필터/조회
 const filteredVariants = computed(() =>
@@ -98,6 +136,23 @@ async function loadMasters() {
   } catch (e) { /* 무시 */ }
 }
 async function loadVariants() { try { variants.value = await skus.list() } catch (e) { /* */ } }
+async function loadInboundLocations() {
+  try {
+    const r = await skus.page({ pageSize: 1000 })
+    const map = {}
+    ;(r.rows || []).forEach((row) => { if (row.qty > 0) (map[row.skuId] ||= []).push(row) })
+    locBySku.value = map
+  } catch (e) { /* 위치 로드 실패 무시 */ }
+}
+function locInfo(s) {
+  const arr = locBySku.value[s.id] || []
+  if (!arr.length) return { text: '재고 없음', muted: true }
+  if (arr.length === 1) {
+    const l = arr[0]
+    return { text: (l.complexName || '') + (l.locationLabel ? ' › ' + l.locationLabel : '') || '위치 미지정', muted: false }
+  }
+  return { text: `여러 위치 (${arr.length}곳)`, muted: false }
+}
 async function fetchRows() {
   loading.value = true
   try {
@@ -113,7 +168,7 @@ async function fetchRows() {
 async function reload() {
   selected.value = null; movements.value = []
   loading.value = true
-  if (isInbound.value) { await loadVariants(); loading.value = false }
+  if (isInbound.value) { await loadVariants(); await loadInboundLocations(); loading.value = false }
   else await fetchRows()
 }
 onMounted(async () => { await loadMasters(); await reload() })
@@ -128,6 +183,9 @@ async function selectItem(x) {
   selected.value = x
   qty.value = isSet.value ? (x.qty || 0) : 1
   memo.value = ''; reason.value = ''
+  requestDept.value = ''; requester.value = ''
+  handler.value = auth.user?.name || ''
+  outComplex.value = ''; outZone.value = ''; outSub.value = ''; outLoc.value = ''
   const skuId = x.skuId || x.id
   movements.value = skuId ? await listMovements(skuId, 6) : []
 }
@@ -147,12 +205,15 @@ async function submit() {
       if (!inLoc.value) { working.value = false; return toast.error('보관위치를 선택하세요. (입고는 위치 필수)') }
       r = await inboundStock(selected.value.id, inLoc.value, v, memoVal, reason.value)
     } else if (op.value === 'out') {
-      r = await outboundStock(selected.value.stockId, v, memoVal, reason.value)
+      r = await outboundStock(selected.value.stockId, v, memoVal, reason.value, {
+        usagePlace: outLocLabel.value, requestDept: requestDept.value.trim(),
+        requester: requester.value.trim(), handler: handler.value.trim(),
+      })
     } else {
       r = await adjustStock(selected.value.stockId, op.value, v, memoVal, reason.value)
     }
     toast.success(`${cfg.value.title} 완료 · 재고 ${r.before} → ${r.after}개`)
-    if (isInbound.value) { await loadVariants(); selected.value = null }
+    if (isInbound.value) { await loadVariants(); await loadInboundLocations(); selected.value = null }
     else { await fetchRows(); const again = rows.value.find((s) => s.stockId === selected.value?.stockId); selected.value = again || null }
   } catch (e) {
     toast.error(e.message || '처리 실패')
@@ -216,13 +277,17 @@ async function confirmVoid() {
           <!-- 입고: 변형 SKU 목록 -->
           <template v-if="isInbound">
             <div v-if="!filteredVariants.length" class="p-10 text-center text-sm text-slate-400">SKU가 없습니다. 먼저 SKU관리에서 등록하세요.</div>
-            <button v-for="s in filteredVariants" :key="s.id" class="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-4 py-2.5 text-left hover:bg-slate-50"
+            <button v-for="s in filteredVariants" :key="s.id" class="flex w-full items-center gap-2 border-b border-slate-50 px-4 py-2.5 text-left hover:bg-slate-50"
               :class="selected?.id === s.id ? 'bg-brand-50' : ''" @click="selectItem(s)">
               <img :src="resolveImage(s)" class="h-10 w-10 shrink-0 rounded-lg border border-slate-100 object-cover" alt="" />
               <div class="min-w-0 flex-1">
                 <span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span>
                 <span class="ml-1 text-sm font-medium text-slate-700">{{ s.productName }}</span>
                 <p class="truncate text-xs text-slate-400">{{ specText(s) }}</p>
+              </div>
+              <div class="w-32 shrink-0 text-right text-xs" :class="locInfo(s).muted ? 'text-slate-300' : 'text-slate-500'">
+                <span class="text-[10px] text-slate-300">현재위치</span>
+                <p class="truncate">📍 {{ locInfo(s).text }}</p>
               </div>
             </button>
           </template>
@@ -249,6 +314,7 @@ async function confirmVoid() {
         <div class="card sticky top-4 p-5">
           <div v-if="!selected" class="py-10 text-center text-sm text-slate-400">왼쪽에서 {{ isInbound ? 'SKU를' : '재고를' }} 선택하세요.</div>
           <template v-else>
+            <img :src="resolveImage(selected)" class="mb-3 h-40 w-full cursor-zoom-in rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="상품 이미지" title="클릭하면 크게 보기" @click="imgOpen = true" />
             <p class="font-mono text-lg font-bold text-slate-800">{{ selected.code }}</p>
             <p class="text-sm text-slate-600">{{ selected.productName }} <span v-if="specText(selected)" class="text-slate-400">· {{ specText(selected) }}</span></p>
             <p v-if="!isInbound" class="text-xs text-slate-400">📍 {{ selected.complexName }}<span v-if="selected.locationLabel"> › {{ selected.locationLabel }}</span></p>
@@ -297,6 +363,44 @@ async function confirmVoid() {
               <input v-model="memo" class="input" placeholder="상세 사유를 입력하세요" />
             </div>
 
+            <!-- 출고 상세 -->
+            <div v-if="op === 'out'" class="mb-4 space-y-2 rounded-lg border border-slate-200 p-3">
+              <p class="text-xs font-semibold text-slate-500">출고 상세</p>
+              <div class="rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-500">
+                출고위치 📍 {{ selected.complexName }}<span v-if="selected.locationLabel"> › {{ selected.locationLabel }}</span>
+              </div>
+              <div v-if="showUsage">
+                <label class="label">사용처 <span class="font-normal text-slate-400">(사용처/공용 위치코드)</span></label>
+                <select v-model="outComplex" class="input mb-1">
+                  <option value="">단지 선택</option>
+                  <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+                <div class="grid grid-cols-2 gap-1">
+                  <select v-model="outZone" class="input" :disabled="!outComplex">
+                    <option value="">구역 전체</option>
+                    <option v-for="z in outZoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option>
+                  </select>
+                  <select v-model="outSub" class="input" :disabled="!outZone">
+                    <option value="">상세구역 전체</option>
+                    <option v-for="sz in outSubChoices" :key="sz.id" :value="sz.id">{{ sz.name }}</option>
+                  </select>
+                </div>
+                <select v-model="outLoc" class="input mt-1">
+                  <option value="">사용처 위치 선택</option>
+                  <option v-for="l in outLocOptions" :key="l.id" :value="l.id">{{ l.code }} · {{ [l.zoneName, l.subZoneName, l.name].filter(Boolean).join(' › ') || l.complexName }}</option>
+                </select>
+                <p v-if="outComplex && !outLocForComplex.length" class="mt-1 text-[11px] text-amber-600">이 단지에 사용처/공용 위치코드가 없습니다. 위치코드관리에서 타입을 지정하세요.</p>
+              </div>
+              <div>
+                <label class="label">요청부서</label>
+                <input v-model="requestDept" class="input" placeholder="예: 시설관리팀" />
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class="label">요청자</label><input v-model="requester" class="input" placeholder="예: 홍길동" /></div>
+                <div><label class="label">담당자</label><input v-model="handler" class="input" placeholder="예: 김철수" /></div>
+              </div>
+            </div>
+
             <button class="btn w-full py-3 text-base text-white" :class="cfg.btnClass" :disabled="working" @click="submit">
               {{ working ? '처리 중…' : cfg.btn }}
             </button>
@@ -342,5 +446,13 @@ async function confirmVoid() {
         </div>
       </div>
     </div>
+    <Teleport to="body">
+      <div v-if="imgOpen && selected" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" @click="imgOpen = false">
+        <img :src="resolveImage(selected)" class="max-h-[90vh] max-w-full rounded-lg object-contain" alt="" />
+        <button class="absolute right-4 top-4 rounded-full bg-white/20 p-2 text-white hover:bg-white/30" @click.stop="imgOpen = false">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>

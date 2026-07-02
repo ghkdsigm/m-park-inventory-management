@@ -37,6 +37,14 @@ public class SkuQueryRepository {
         if (nb(f.productId()))        { w.append(" and sk.productId = :productId ");              p.put("productId", f.productId()); }
         if (nb(f.skuId()))            { w.append(" and sk.id = :skuId ");                          p.put("skuId", f.skuId()); }
         if (nb(f.status()))           { w.append(" and st.status = :status ");                   p.put("status", f.status()); }
+        if (nb(f.auditStatus())) {
+            switch (f.auditStatus()) {
+                case "unaudited" -> w.append(" and st.lastAuditedAt is null ");
+                case "mismatch"  -> w.append(" and st.auditStatus = 'mismatch' ");
+                case "ok"        -> w.append(" and st.auditStatus = 'ok' ");
+                default          -> { }
+            }
+        }
         if (nb(f.color()))            { w.append(" and sk.color = :color ");                     p.put("color", f.color()); }
         if (nb(f.releaseYear()))      { w.append(" and sk.releaseYear = :releaseYear ");         p.put("releaseYear", f.releaseYear()); }
         if (nb(f.productionYear()))   { w.append(" and sk.productionYear = :productionYear ");   p.put("productionYear", f.productionYear()); }
@@ -83,6 +91,64 @@ public class SkuQueryRepository {
         List<StockRow> rows = new ArrayList<>();
         for (Object[] r : raw) rows.add(toRow((Stock) r[0], (Sku) r[1]));
         return new SkuPageResult(rows, total, num(agg[0]), num(agg[1]), num(agg[2]));
+    }
+
+    /** SKU 단위 집계 목록 — 같은 SKU의 전 위치 재고를 한 행으로 묶는다. (입출고 통합조회 좌측) */
+    public SkuAggPageResult pageBySku(SkuFilter f) {
+        Map<String, Object> p = new HashMap<>();
+        String where = buildWhere(f, p, true);
+
+        long total = bindAll(em.createQuery("select count(distinct sk.id) " + where, Long.class), p).getSingleResult();
+
+        int page = f.page() == null || f.page() < 1 ? 1 : f.page();
+        int size = f.pageSize() == null || f.pageSize() < 1 ? 10 : f.pageSize();
+        // sk.id + 집계만 그룹 조회(ONLY_FULL_GROUP_BY 안전) → SKU 엔티티는 별도 로드해 조합
+        List<Object[]> raw = bindAll(em.createQuery(
+                "select sk.id, coalesce(sum(st.qty),0), coalesce(sum(case when st.qty > 0 then 1 else 0 end),0), max(coalesce(st.lastMovedAt, st.createdAt)) "
+                        + where + " group by sk.id " + orderByAgg(f.sort()), Object[].class), p)
+                .setFirstResult((page - 1) * size).setMaxResults(size).getResultList();
+
+        List<String> ids = new ArrayList<>();
+        for (Object[] r : raw) ids.add((String) r[0]);
+        Map<String, Sku> skuById = new HashMap<>();
+        if (!ids.isEmpty()) {
+            for (Sku sk : em.createQuery("select sk from Sku sk where sk.id in :ids", Sku.class)
+                    .setParameter("ids", ids).getResultList()) skuById.put(sk.getId(), sk);
+        }
+
+        List<SkuAggRow> rows = new ArrayList<>();
+        for (Object[] r : raw) {
+            Sku sk = skuById.get((String) r[0]);
+            if (sk == null) continue;
+            int qty = (int) num(r[1]);
+            int locCount = (int) num(r[2]);
+            LocalDateTime moved = (LocalDateTime) r[3];
+            rows.add(new SkuAggRow(
+                    sk.getId(), sk.getCode(), sk.getProductId(), sk.getProductName(),
+                    sk.getSpec(), sk.getColor(), sk.getReleaseYear(), sk.getProductionYear(), sk.getPurpose(),
+                    sk.getImageUrl(), sk.getProductMainImageUrl(), sk.getPrice(), sk.getSafetyStock(),
+                    sk.getCategoryId(), sk.getProductCodeId(), sk.getProductDetailId(), sk.getPathLabel(),
+                    qty, locCount, aggStatus(qty, sk.getSafetyStock()), moved,
+                    sk.getDimW(), sk.getDimL(), sk.getDimH(), sk.getDimD()));
+        }
+        return new SkuAggPageResult(rows, total);
+    }
+
+    /** 집계 목록 정렬 — 그룹 함수 기준(개별 st.* 참조 불가) */
+    private String orderByAgg(String sort) {
+        if (sort == null) sort = "recent";
+        return switch (sort) {
+            case "qtyAsc"  -> " order by sum(st.qty) asc ";
+            case "qtyDesc" -> " order by sum(st.qty) desc ";
+            case "code"    -> " order by sk.code asc ";
+            default        -> " order by max(coalesce(st.lastMovedAt, st.createdAt)) desc ";
+        };
+    }
+
+    private static String aggStatus(int qty, int safety) {
+        if (qty <= 0) return "out";
+        if (safety > 0 && qty <= safety) return "low";
+        return "in_stock";
     }
 
     public List<ComplexGroupRow> groupByComplex(SkuFilter f) {
@@ -166,7 +232,9 @@ public class SkuQueryRepository {
                 st.getLastMovedAt(), st.getLastMovedBy(),
                 sk.isLifecycleEnabled(), sk.getCycleValue(), sk.getCycleUnit(),
                 st.getLastReplacedAt(), st.getNextReplaceAt(),
-                sk.getDimW(), sk.getDimL(), sk.getDimH(), sk.getDimD());
+                sk.getDimW(), sk.getDimL(), sk.getDimH(), sk.getDimD(),
+                st.getLastAuditedAt(), st.getLastAuditedBy(), st.getLastAuditDiff(), st.getLastAuditCounted(),
+                st.getAuditStatus(), st.getAuditResolvedAt(), st.getAuditResolvedBy(), st.getAuditResolveReason());
     }
 
     private static boolean nb(String s) { return s != null && !s.isBlank(); }

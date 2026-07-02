@@ -6,7 +6,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +31,7 @@ public class LocationService {
         if (isBlank(r.name())) throw ApiException.badRequest("구역명을 입력하세요.");
         Zone z = new Zone();
         z.setName(r.name().trim());
+        z.setType(normType(r.type()));
         z.setComplexId(r.complexId());
         z.setComplexName(nz(r.complexName()));
         return zoneRepo.save(z);
@@ -37,6 +40,7 @@ public class LocationService {
     public Zone updateZone(String id, ZoneRequest r) {
         Zone z = zoneRepo.findById(id).orElseThrow(() -> ApiException.notFound("구역을 찾을 수 없습니다."));
         if (!isBlank(r.name())) z.setName(r.name().trim());
+        if (!isBlank(r.type())) z.setType(normType(r.type()));
         if (r.complexId() != null) z.setComplexId(r.complexId());
         z.setComplexName(nz(r.complexName()));
         return zoneRepo.save(z);
@@ -57,6 +61,7 @@ public class LocationService {
         if (isBlank(r.name())) throw ApiException.badRequest("상세구역명을 입력하세요.");
         SubZone s = new SubZone();
         s.setName(r.name().trim());
+        s.setType(normType(r.type()));
         s.setZoneId(r.zoneId());
         s.setZoneName(nz(r.zoneName()));
         s.setComplexId(r.complexId());
@@ -67,6 +72,7 @@ public class LocationService {
     public SubZone updateSubZone(String id, SubZoneRequest r) {
         SubZone s = subZoneRepo.findById(id).orElseThrow(() -> ApiException.notFound("상세구역을 찾을 수 없습니다."));
         if (!isBlank(r.name())) s.setName(r.name().trim());
+        if (!isBlank(r.type())) s.setType(normType(r.type()));
         if (r.zoneId() != null) s.setZoneId(r.zoneId());
         s.setZoneName(nz(r.zoneName()));
         if (r.complexId() != null) s.setComplexId(r.complexId());
@@ -81,8 +87,19 @@ public class LocationService {
     /* ===================== 보관위치 ===================== */
     @Transactional(readOnly = true)
     public List<StorageLocation> listStorage(String complexId) {
-        return isBlank(complexId) ? storageRepo.findAllByOrderByCreatedAtDesc()
+        List<StorageLocation> list = isBlank(complexId) ? storageRepo.findAllByOrderByCreatedAtDesc()
                 : storageRepo.findByComplexIdOrderByCodeAsc(complexId);
+        // 유효 타입 계산: 상세구역 타입 우선, 없으면 구역 타입, 둘 다 없으면 warehouse
+        Map<String, String> zoneType = new HashMap<>();
+        for (Zone z : zoneRepo.findAll()) zoneType.put(z.getId(), normType(z.getType()));
+        Map<String, String> subType = new HashMap<>();
+        for (SubZone s : subZoneRepo.findAll()) subType.put(s.getId(), normType(s.getType()));
+        for (StorageLocation l : list) {
+            String t = l.getSubZoneId() != null ? subType.get(l.getSubZoneId()) : null;
+            if (t == null && l.getZoneId() != null) t = zoneType.get(l.getZoneId());
+            l.setType(t == null ? "warehouse" : t);
+        }
+        return list;
     }
 
     public StorageLocation createStorage(StorageLocationRequest r) {
@@ -115,4 +132,9 @@ public class LocationService {
 
     private static boolean isBlank(String s) { return s == null || s.isBlank(); }
     private static String nz(String s) { return s == null ? "" : s; }
+    /** 허용 타입만 통과, 그 외/빈값은 warehouse */
+    private static String normType(String t) {
+        if (t == null) return "warehouse";
+        return switch (t) { case "usage", "common", "warehouse" -> t; default -> "warehouse"; };
+    }
 }

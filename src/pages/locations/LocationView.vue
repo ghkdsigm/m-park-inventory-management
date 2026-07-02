@@ -19,11 +19,26 @@ const loadingZones = ref(false)
 const loadingSubs = ref(false)
 
 const newZone = ref('')
+const newZoneType = ref('warehouse')
 const newSub = ref('')
+const newSubType = ref('warehouse')
 const editZoneId = ref('')
 const editZoneName = ref('')
+const editZoneType = ref('warehouse')
 const editSubId = ref('')
 const editSubName = ref('')
+const editSubType = ref('warehouse')
+
+const LOC_TYPES = [
+  { v: 'warehouse', t: '재고창고' },
+  { v: 'usage', t: '사용처' },
+  { v: 'common', t: '공용' },
+]
+function typeMeta(t) {
+  if (t === 'usage') return { t: '사용처', c: 'bg-sky-50 text-sky-700' }
+  if (t === 'common') return { t: '공용', c: 'bg-violet-50 text-violet-700' }
+  return { t: '재고창고', c: 'bg-emerald-50 text-emerald-700' }
+}
 
 onMounted(async () => {
   try {
@@ -55,8 +70,9 @@ async function addZone() {
   const name = newZone.value.trim()
   if (!name) return
   try {
-    await zones.create({ name, complexId: selComplex.value.id, complexName: selComplex.value.name })
+    await zones.create({ name, type: newZoneType.value, complexId: selComplex.value.id, complexName: selComplex.value.name })
     newZone.value = ''
+    newZoneType.value = 'warehouse'
     await loadZones()
     toast.success('구역이 추가되었습니다.')
   } catch (e) {
@@ -66,12 +82,13 @@ async function addZone() {
 function startEditZone(z) {
   editZoneId.value = z.id
   editZoneName.value = z.name
+  editZoneType.value = z.type || 'warehouse'
 }
 async function saveZone(z) {
   const name = editZoneName.value.trim()
   if (!name) return
   try {
-    await zones.update(z.id, { name })
+    await zones.update(z.id, { name, type: editZoneType.value })
     editZoneId.value = ''
     await loadZones()
     if (selZone.value?.id === z.id) selZone.value = { ...selZone.value, name }
@@ -121,12 +138,14 @@ async function addSub() {
   try {
     await subZones.create({
       name,
+      type: newSubType.value,
       zoneId: selZone.value.id,
       zoneName: selZone.value.name,
       complexId: selComplex.value.id,
       complexName: selComplex.value.name,
     })
     newSub.value = ''
+    newSubType.value = 'warehouse'
     await loadSubs()
     toast.success('상세구역이 추가되었습니다.')
   } catch (e) {
@@ -136,12 +155,13 @@ async function addSub() {
 function startEditSub(s) {
   editSubId.value = s.id
   editSubName.value = s.name
+  editSubType.value = s.type || 'warehouse'
 }
 async function saveSub(s) {
   const name = editSubName.value.trim()
   if (!name) return
   try {
-    await subZones.update(s.id, { name })
+    await subZones.update(s.id, { name, type: editSubType.value })
     editSubId.value = ''
     await loadSubs()
     toast.success('수정되었습니다.')
@@ -201,6 +221,7 @@ async function removeSub(s) {
         </div>
         <div v-if="selComplex" class="flex gap-1.5 border-b border-slate-100 p-2">
           <input v-model="newZone" class="input" placeholder="구역명 입력 후 +" @keyup.enter="run(addZone)" />
+          <select v-model="newZoneType" class="input w-auto shrink-0 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></select>
           <button class="btn-primary btn-sm shrink-0" :disabled="saving" @click="run(addZone)">＋</button>
         </div>
         <div class="max-h-[55vh] flex-1 overflow-y-auto p-2 scrollbar-slim">
@@ -215,12 +236,13 @@ async function removeSub(s) {
           >
             <template v-if="editZoneId === z.id">
               <input v-model="editZoneName" class="input py-1" @keyup.enter="run(() => saveZone(z))" />
+              <select v-model="editZoneType" class="input w-auto shrink-0 py-1 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></select>
               <button class="btn-primary btn-sm shrink-0" :disabled="saving" @click="run(() => saveZone(z))">저장</button>
               <button class="btn-ghost btn-sm shrink-0" @click="editZoneId = ''">취소</button>
             </template>
             <template v-else>
-              <button class="flex flex-1 items-center justify-between truncate text-left text-sm" :class="selZone?.id === z.id ? 'font-semibold text-brand-700' : 'text-slate-700'" @click="selectZone(z)">
-                <span class="truncate">{{ z.name }}</span>
+              <button class="flex flex-1 items-center justify-between gap-1 truncate text-left text-sm" :class="selZone?.id === z.id ? 'font-semibold text-brand-700' : 'text-slate-700'" @click="selectZone(z)">
+                <span class="flex min-w-0 items-center gap-1.5"><span class="truncate">{{ z.name }}</span><span class="badge shrink-0 text-[10px]" :class="typeMeta(z.type).c">{{ typeMeta(z.type).t }}</span></span>
                 <svg class="h-4 w-4 shrink-0 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>
               <button class="shrink-0 rounded p-1 text-slate-400 opacity-0 hover:bg-slate-200 group-hover:opacity-100" title="수정" @click="startEditZone(z)">
@@ -242,6 +264,7 @@ async function removeSub(s) {
         </div>
         <div v-if="selZone" class="flex gap-1.5 border-b border-slate-100 p-2">
           <input v-model="newSub" class="input" placeholder="상세구역명 입력 후 +" @keyup.enter="run(addSub)" />
+          <select v-model="newSubType" class="input w-auto shrink-0 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></select>
           <button class="btn-primary btn-sm shrink-0" :disabled="saving" @click="run(addSub)">＋</button>
         </div>
         <div class="max-h-[55vh] flex-1 overflow-y-auto p-2 scrollbar-slim">
@@ -251,11 +274,12 @@ async function removeSub(s) {
           <div v-for="s in subList" :key="s.id" class="group mb-1 flex items-center gap-1 rounded-lg px-2 py-1.5 hover:bg-slate-50">
             <template v-if="editSubId === s.id">
               <input v-model="editSubName" class="input py-1" @keyup.enter="run(() => saveSub(s))" />
+              <select v-model="editSubType" class="input w-auto shrink-0 py-1 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></select>
               <button class="btn-primary btn-sm shrink-0" :disabled="saving" @click="run(() => saveSub(s))">저장</button>
               <button class="btn-ghost btn-sm shrink-0" @click="editSubId = ''">취소</button>
             </template>
             <template v-else>
-              <span class="flex-1 truncate text-sm text-slate-700">{{ s.name }}</span>
+              <span class="flex min-w-0 flex-1 items-center gap-1.5"><span class="truncate text-sm text-slate-700">{{ s.name }}</span><span class="badge shrink-0 text-[10px]" :class="typeMeta(s.type).c">{{ typeMeta(s.type).t }}</span></span>
               <button class="shrink-0 rounded p-1 text-slate-400 opacity-0 hover:bg-slate-200 group-hover:opacity-100" title="수정" @click="startEditSub(s)">
                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" stroke-linejoin="round"/></svg>
               </button>

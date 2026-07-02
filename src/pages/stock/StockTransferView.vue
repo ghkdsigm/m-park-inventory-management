@@ -28,6 +28,7 @@ const qty = ref(1)
 const reason = ref('')
 const memo = ref('')
 const working = ref(false)
+const imgOpen = ref(false)
 const REASONS = ['단지간 이동', '위치 정리/재배치', '반품 이동', '기타']
 
 // 도착 보관위치 선택 (단지 → 구역 → 상세구역 → 보관위치)
@@ -138,6 +139,7 @@ async function submit() {
         <div class="card sticky top-4 p-5">
           <div v-if="!selected" class="py-10 text-center text-sm text-slate-400">왼쪽에서 이동할 재고를 선택하세요.</div>
           <template v-else>
+            <img :src="resolveImage(selected)" class="mb-3 h-40 w-full cursor-zoom-in rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="상품 이미지" title="클릭하면 크게 보기" @click="imgOpen = true" />
             <p class="font-mono text-lg font-bold text-slate-800">{{ selected.code }}</p>
             <p class="text-sm text-slate-600">{{ selected.productName }} <span v-if="specText(selected)" class="text-slate-400">· {{ specText(selected) }}</span></p>
             <div class="my-4 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-3">
@@ -198,5 +200,13 @@ async function submit() {
         </div>
       </div>
     </div>
+    <Teleport to="body">
+      <div v-if="imgOpen && selected" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" @click="imgOpen = false">
+        <img :src="resolveImage(selected)" class="max-h-[90vh] max-w-full rounded-lg object-contain" alt="" />
+        <button class="absolute right-4 top-4 rounded-full bg-white/20 p-2 text-white hover:bg-white/30" @click.stop="imgOpen = false">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>

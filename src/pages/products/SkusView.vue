@@ -70,7 +70,7 @@ const filtered = computed(() => allRows.value.filter((s) => {
   if (priceMax.value !== '' && Number(s.price) > Number(priceMax.value)) return false
   if (search.value) {
     const q = search.value.toLowerCase()
-    return [s.code, s.productName, s.spec, s.purpose].some((v) => (v || '').toLowerCase().includes(q))
+    return [s.code, s.productName, s.spec, s.color, s.purpose, s.pathLabel].some((v) => (v || '').toLowerCase().includes(q))
   }
   return true
 }))
@@ -199,6 +199,10 @@ async function save() {
   try {
     if (editing.value) {
       await skus.update(editing.value.id, {
+        // 상품 기준 필드는 상품에서 다시 실어 보존(수정 시 덮어쓰기 방지)
+        productId: product.id, productName: product.name,
+        categoryId: product.categoryId, productCodeId: product.productCodeId, productDetailId: product.productDetailId,
+        pathLabel: product.pathLabel || '',
         spec: form.spec.trim(), ...dims, color: form.color.trim(),
         releaseYear: String(form.releaseYear || '').trim(), productionYear: String(form.productionYear || '').trim(),
         purpose: form.purpose.trim(), imageUrl: form.imageUrl || '',
@@ -238,6 +242,13 @@ function toggleAll() {
 function toggle(id) { selected.value.has(id) ? selected.value.delete(id) : selected.value.add(id); selected.value = new Set(selected.value) }
 function showQr(s) { qrSku.value = s; qrModal.value = true }
 
+/* ---- 상세 조회 팝업 (읽기 전용) ---- */
+const detailModal = ref(false)
+const detailSku = ref(null)
+function openDetail(s) { detailSku.value = s; detailModal.value = true }
+function cycleUnitText(u) { return CYCLE_UNITS.find((x) => x.v === u)?.t || u }
+function editFromDetail() { detailModal.value = false; openEdit(detailSku.value) }
+
 async function printSelected() {
   if (!selected.value.size) return toast.error('출력할 SKU를 선택하세요.')
   printing.value = true
@@ -273,7 +284,7 @@ async function printSelected() {
         <span class="text-slate-400">~</span>
         <input v-model="priceMax" type="number" min="0" class="input w-24" placeholder="최대" />
       </div>
-      <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명/구매목적 검색" />
+      <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드 / 상품명 / 규격 / 색상 / 목적 검색" />
       <button class="btn-ghost btn-sm" @click="resetFilters">초기화</button>
       <select v-model="pageSize" class="input w-auto sm:ml-auto"><option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option></select>
     </div>
@@ -287,8 +298,8 @@ async function printSelected() {
           <tr>
             <th class="w-10 px-3 py-2.5"><input type="checkbox" class="rounded border-slate-300" :checked="allChecked" @change="toggleAll" /></th>
             <th class="px-3 py-2.5 font-semibold">SKU 코드</th>
-            <th class="px-3 py-2.5 font-semibold">상품</th>
-            <th class="px-3 py-2.5 font-semibold">규격</th>
+            <th class="px-3 py-2.5 font-semibold">SKU명 (상품 · 규격)</th>
+            <th class="px-3 py-2.5 font-semibold">치수</th>
             <th class="px-3 py-2.5 font-semibold">색상</th>
             <th class="px-3 py-2.5 font-semibold">출시</th>
             <th class="px-3 py-2.5 font-semibold">생산</th>
@@ -300,17 +311,17 @@ async function printSelected() {
         <tbody class="divide-y divide-slate-50">
           <tr v-for="s in paged" :key="s.id" class="hover:bg-slate-50/60" :class="selected.has(s.id) ? 'bg-brand-50/40' : ''">
             <td class="px-3 py-2.5"><input type="checkbox" class="rounded border-slate-300" :checked="selected.has(s.id)" @change="toggle(s.id)" /></td>
-            <td class="px-3 py-2.5"><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span></td>
-            <td class="px-3 py-2.5">
+            <td class="cursor-pointer px-3 py-2.5" title="상세 보기" @click="openDetail(s)"><span class="badge bg-brand-50 font-mono text-brand-700 hover:bg-brand-100">{{ s.code }}</span></td>
+            <td class="cursor-pointer px-3 py-2.5" title="상세 보기" @click="openDetail(s)">
               <div class="flex items-center gap-2.5">
                 <img :src="resolveImage(s)" class="h-10 w-10 shrink-0 rounded-lg border border-slate-100 object-cover" alt="" />
                 <div class="min-w-0">
-                  <p class="font-medium text-slate-800">{{ s.productName }}</p>
+                  <p class="font-medium text-slate-800 hover:text-brand-700">{{ s.productName }}<span v-if="s.spec" class="text-brand-600"> · {{ s.spec }}</span></p>
                   <p class="truncate text-[11px] text-slate-300">{{ s.pathLabel }}</p>
                 </div>
               </div>
             </td>
-            <td class="px-3 py-2.5 text-xs text-slate-600">{{ dimText(s) || s.spec || '—' }}</td>
+            <td class="px-3 py-2.5 text-xs text-slate-600">{{ dimText(s) || '—' }}</td>
             <td class="px-3 py-2.5 text-slate-600">{{ s.color || '—' }}</td>
             <td class="px-3 py-2.5 text-slate-500">{{ s.releaseYear || '—' }}</td>
             <td class="px-3 py-2.5 text-slate-500">{{ s.productionYear || '—' }}</td>
@@ -373,7 +384,11 @@ async function printSelected() {
         </div>
         <p class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">규격·색상·출시년도·생산년도·구매목적·단가·안전재고 중 <b>최소 1개</b>는 입력해야 저장됩니다. 재고 수량은 <b>입고</b>에서 위치별로 등록합니다.</p>
         <div>
-          <label class="label">규격 (cm · 선택)</label>
+          <label class="label">규격 / 사양 <span class="text-slate-400">(SKU 구분 — 관리자가 직접 입력. 예: 2구, 3구, 방수형)</span></label>
+          <input v-model="form.spec" class="input" placeholder="예: 2구 / 3구 / 5m / 방수형" />
+        </div>
+        <div>
+          <label class="label">치수 (cm · 선택)</label>
           <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div class="flex items-center gap-1"><span class="shrink-0 text-xs text-slate-500">가로</span><input v-model="form.dimW" type="number" min="0" step="0.1" class="input px-2" /><span class="text-xs text-slate-400">cm</span></div>
             <div class="flex items-center gap-1"><span class="shrink-0 text-xs text-slate-500">세로</span><input v-model="form.dimL" type="number" min="0" step="0.1" class="input px-2" /><span class="text-xs text-slate-400">cm</span></div>
@@ -423,6 +438,46 @@ async function printSelected() {
       <template #footer>
         <button class="btn-ghost" @click="modal = false">취소</button>
         <button class="btn-primary" :disabled="saving" @click="run(save)">{{ editing ? '수정' : '생성' }}</button>
+      </template>
+    </BaseModal>
+
+    <!-- SKU 상세 조회 (읽기 전용) -->
+    <BaseModal v-model="detailModal" title="SKU 상세">
+      <div v-if="detailSku" class="space-y-4">
+        <div class="flex gap-4">
+          <img :src="resolveImage(detailSku)" class="h-28 w-28 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="" />
+          <div class="min-w-0 flex-1">
+            <span class="badge bg-brand-50 font-mono text-brand-700">{{ detailSku.code }}</span>
+            <p class="mt-1 text-lg font-bold text-slate-800">{{ detailSku.productName }}<span v-if="detailSku.spec" class="text-brand-600"> · {{ detailSku.spec }}</span></p>
+            <p class="mt-0.5 text-xs text-slate-400">{{ detailSku.pathLabel || '경로 미지정' }}</p>
+          </div>
+        </div>
+
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+          <div><dt class="text-xs text-slate-400">치수</dt><dd class="text-slate-700">{{ dimText(detailSku) || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">색상</dt><dd class="text-slate-700">{{ detailSku.color || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">구매목적</dt><dd class="text-slate-700">{{ detailSku.purpose || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">출시년도</dt><dd class="text-slate-700">{{ detailSku.releaseYear || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">생산년도</dt><dd class="text-slate-700">{{ detailSku.productionYear || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">표준단가</dt><dd class="font-semibold text-slate-800">{{ Number(detailSku.price || 0).toLocaleString() }}원</dd></div>
+          <div><dt class="text-xs text-slate-400">안전재고</dt><dd class="text-slate-700">{{ detailSku.safetyStock ?? 0 }}</dd></div>
+        </dl>
+
+        <div class="rounded-lg border border-slate-200 p-3">
+          <p class="mb-1 text-xs font-semibold text-slate-500">연한관리</p>
+          <template v-if="detailSku.lifecycleEnabled">
+            <p class="text-sm text-slate-700">교체주기: <b>{{ detailSku.cycleValue }}{{ cycleUnitText(detailSku.cycleUnit) }}</b></p>
+            <p v-if="detailSku.replaceReason" class="mt-0.5 text-xs text-slate-500">사유/유형: {{ detailSku.replaceReason }}</p>
+            <p v-if="detailSku.lifecycleNote" class="mt-0.5 text-xs text-slate-400">비고: {{ detailSku.lifecycleNote }}</p>
+          </template>
+          <p v-else class="text-sm text-slate-400">사용 안 함</p>
+        </div>
+        <p class="text-[11px] text-slate-400">실제 재고 수량·위치는 재고현황/입고에서 관리됩니다.</p>
+      </div>
+      <template #footer>
+        <button class="btn-ghost" @click="showQr(detailSku)">QR</button>
+        <button class="btn-ghost" @click="editFromDetail">수정</button>
+        <button class="btn-primary" @click="detailModal = false">닫기</button>
       </template>
     </BaseModal>
 

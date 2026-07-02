@@ -45,6 +45,17 @@ public class Stock extends BaseEntity {
     private LocalDateTime locationVerifiedAt;
     private String locationVerifiedBy;
 
+    // 재고실사 — 마지막 실사 결과 스냅샷 + 오차 정상처리 정보
+    private LocalDateTime lastAuditedAt;
+    private String lastAuditedBy;
+    private Integer lastAuditDiff;      // 실사 당시 오차(실사수량 - 시스템수량)
+    private Integer lastAuditCounted;   // 실사 당시 확정 수량
+    /** null=미확정 | mismatch=오차 미처리(비정상) | ok=정상(오차 0 또는 사유 정상처리) */
+    private String auditStatus;
+    private LocalDateTime auditResolvedAt;
+    private String auditResolvedBy;
+    private String auditResolveReason = "";
+
     // 연한관리 교체 이벤트(물리 재고 단위)
     private LocalDateTime lastReplacedAt;
     private LocalDateTime nextReplaceAt;

@@ -81,6 +81,7 @@ export const skus = {
       productId: filters.productId || null,
       skuId: filters.skuId || null,
       status: filters.status || null,
+      auditStatus: filters.auditStatus || null,
       search: filters.search || null,
       color: filters.color || null,
       releaseYear: filters.releaseYear || null,
@@ -99,6 +100,28 @@ export const skus = {
       lowCount: r?.lowCount || 0,
       outCount: r?.outCount || 0,
     }
+  },
+  /** SKU 단위 집계 목록 (전 위치 합산). 입출고 통합조회 좌측 목록용. */
+  async pageBySku(filters = {}) {
+    const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
+    const r = await api.post('/skus/page-by-sku', {
+      complexId: filters.complexId || null,
+      categoryId: filters.categoryId || null,
+      productCodeId: filters.productCodeId || null,
+      productDetailId: filters.productDetailId || null,
+      productId: filters.productId || null,
+      status: filters.status || null,
+      search: filters.search || null,
+      color: filters.color || null,
+      releaseYear: filters.releaseYear || null,
+      productionYear: filters.productionYear || null,
+      priceMin: numOrNull(filters.priceMin),
+      priceMax: numOrNull(filters.priceMax),
+      sort: filters.sort || 'moved',
+      page: filters.page || 1,
+      pageSize: filters.pageSize || 30,
+    })
+    return { rows: r?.rows || [], total: r?.total || 0 }
   },
   filterOptions: () => api.get('/skus/filter-options'),
   listByIds: (ids) => (!ids || !ids.length ? Promise.resolve([]) : api.post('/skus/by-ids', ids)),
@@ -134,9 +157,13 @@ export async function inboundStock(skuId, storageLocationId, qty, memo = '', rea
   return api.post('/stock/inbound', { skuId, storageLocationId, qty: Number(qty), memo: memo || '', reason: reason || '' })
 }
 
-/** 출고 — 재고행(stockId) 대상 */
-export async function outboundStock(stockId, qty, memo = '', reason = '') {
-  return api.post('/stock/outbound', { stockId, qty: Number(qty), memo: memo || '', reason: reason || '' })
+/** 출고 — 재고행(stockId) 대상. extra: 사용처/요청부서/요청자/담당자 */
+export async function outboundStock(stockId, qty, memo = '', reason = '', extra = {}) {
+  return api.post('/stock/outbound', {
+    stockId, qty: Number(qty), memo: memo || '', reason: reason || '',
+    usagePlace: extra.usagePlace || '', requestDept: extra.requestDept || '',
+    requester: extra.requester || '', handler: extra.handler || '',
+  })
 }
 
 /** 조정/실사 — 재고행(stockId) 대상. type: 'adjust' | 'audit' */
@@ -153,6 +180,11 @@ export async function transferStock(payload) {
     memo: payload.memo || '',
     reason: payload.reason || '',
   })
+}
+
+/** 실사 오차 정상처리 — 재고행(stockId) + 사유. 비정상→정상 전환. */
+export async function resolveAudit(stockId, reason = '') {
+  return api.post(`/stock/${stockId}/audit-resolve`, { reason: reason || '' })
 }
 
 export async function applyAuditBatch(items, actor, memo = '') {

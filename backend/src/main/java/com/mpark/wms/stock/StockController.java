@@ -38,4 +38,9 @@ public class StockController {
     public void verify(@PathVariable String stockId, @RequestBody(required = false) VerifyRequest r) {
         service.verifyLocation(stockId, r == null ? null : r.name());
     }
+
+    @PostMapping("/stock/{stockId}/audit-resolve")
+    public void resolveAudit(@PathVariable String stockId, @RequestBody(required = false) AuditResolveRequest r) {
+        service.resolveAudit(stockId, r == null ? null : r.reason());
+    }
 }

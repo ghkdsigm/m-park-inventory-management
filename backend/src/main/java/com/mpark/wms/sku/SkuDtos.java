@@ -15,7 +15,7 @@ public final class SkuDtos {
     /** 검색/페이징 필터 (db.js skus.page 파라미터) */
     public record SkuFilter(
             String complexId, String categoryId, String productCodeId, String productDetailId, String productId, String skuId,
-            String storageLocationId, String status, String search, String color, String releaseYear, String productionYear,
+            String storageLocationId, String status, String auditStatus, String search, String color, String releaseYear, String productionYear,
             BigDecimal priceMin, BigDecimal priceMax, Boolean lifecycleOnly,
             String sort, Integer page, Integer pageSize
     ) {}
@@ -33,11 +33,26 @@ public final class SkuDtos {
             LocalDateTime lastMovedAt, String lastMovedBy,
             boolean lifecycleEnabled, Integer cycleValue, String cycleUnit,
             LocalDateTime lastReplacedAt, LocalDateTime nextReplaceAt,
-            BigDecimal dimW, BigDecimal dimL, BigDecimal dimH, BigDecimal dimD
+            BigDecimal dimW, BigDecimal dimL, BigDecimal dimH, BigDecimal dimD,
+            LocalDateTime lastAuditedAt, String lastAuditedBy, Integer lastAuditDiff, Integer lastAuditCounted,
+            String auditStatus, LocalDateTime auditResolvedAt, String auditResolvedBy, String auditResolveReason
     ) {}
 
     /** page() 반환: 재고행 + 집계 */
     public record SkuPageResult(List<StockRow> rows, long total, long totalQty, long lowCount, long outCount) {}
+
+    /** SKU 단위로 묶은 한 행 = SKU 변형 필드 + 전 위치 합산 재고. (입출고 통합조회 좌측 목록) */
+    public record SkuAggRow(
+            String skuId, String code, String productId, String productName,
+            String spec, String color, String releaseYear, String productionYear, String purpose,
+            String imageUrl, String productMainImageUrl, BigDecimal price, int safetyStock,
+            String categoryId, String productCodeId, String productDetailId, String pathLabel,
+            int qty, int locationCount, String status, LocalDateTime lastMovedAt,
+            BigDecimal dimW, BigDecimal dimL, BigDecimal dimH, BigDecimal dimD
+    ) {}
+
+    /** pageBySku() 반환: SKU 집계행 + 총 SKU 수 */
+    public record SkuAggPageResult(List<SkuAggRow> rows, long total) {}
 
     /** 단지별 묶기 한 행 */
     public record ComplexGroupRow(String complexName, long skuCount, long totalQty, long lowCount, long outCount) {}

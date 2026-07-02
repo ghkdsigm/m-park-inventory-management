@@ -28,7 +28,7 @@ async function openLocation(s) {
   locModal.value = true
   locLoading.value = true
   try {
-    locLogs.value = await listLocationLogs(s.id, 50)
+    locLogs.value = await listLocationLogs(s.skuId, 50)
   } catch (e) {
     /* 무시 */
   } finally {
@@ -59,6 +59,7 @@ const fCategory = ref('')
 const fProductCode = ref('')
 const fProductDetail = ref('')
 const fStatus = ref('')
+const fAudit = ref('')
 const sort = ref('recent')
 const groupByComplex = ref(false)
 const showTotal = ref(false)
@@ -83,6 +84,17 @@ const STATUS = [
   { v: 'low', t: '부족' },
   { v: 'out', t: '품절' },
 ]
+const AUDIT_STATUS = [
+  { v: '', t: '전체 실사상태' },
+  { v: 'unaudited', t: '미확정' },
+  { v: 'ok', t: '정상' },
+  { v: 'mismatch', t: '오차' },
+]
+function auditMeta(s) {
+  if (!s.lastAuditedAt) return { t: '미확정', c: 'bg-slate-100 text-slate-500' }
+  if (s.auditStatus === 'mismatch') return { t: '오차', c: 'bg-rose-50 text-rose-600' }
+  return { t: '정상', c: 'bg-emerald-50 text-emerald-700' }
+}
 
 function curFilters() {
   return {
@@ -91,6 +103,7 @@ function curFilters() {
     productCodeId: fProductCode.value,
     productDetailId: fProductDetail.value,
     status: fStatus.value,
+    auditStatus: fAudit.value,
     search: search.value.trim(),
   }
 }
@@ -142,7 +155,7 @@ watch(fCategory, () => { fProductCode.value = ''; fProductDetail.value = '' })
 watch(fProductCode, () => { fProductDetail.value = '' })
 
 // 필터/정렬/묶기 변경 → 1페이지부터 다시 조회
-watch([fComplex, fCategory, fProductCode, fProductDetail, fStatus, sort, groupByComplex], () => {
+watch([fComplex, fCategory, fProductCode, fProductDetail, fStatus, fAudit, sort, groupByComplex], () => {
   page.value = 1
   fetchPage()
 })
@@ -178,7 +191,7 @@ const statusMeta = {
 }
 
 function resetFilters() {
-  search.value = ''; fComplex.value = ''; fCategory.value = ''; fProductCode.value = ''; fProductDetail.value = ''; fStatus.value = ''; sort.value = 'recent'
+  search.value = ''; fComplex.value = ''; fCategory.value = ''; fProductCode.value = ''; fProductDetail.value = ''; fStatus.value = ''; fAudit.value = ''; sort.value = 'recent'
 }
 </script>
 
@@ -205,6 +218,7 @@ function resetFilters() {
       <select v-model="fProductCode" class="input w-auto"><option value="">전체 제품코드</option><option v-for="p in productCodeOptions" :key="p.id" :value="p.id">{{ p.name }}</option></select>
       <select v-model="fProductDetail" class="input w-auto"><option value="">전체 상세코드</option><option v-for="d in productDetailOptions" :key="d.id" :value="d.id">{{ d.name }}</option></select>
       <select v-model="fStatus" class="input w-auto"><option v-for="s in STATUS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+      <select v-model="fAudit" class="input w-auto"><option v-for="a in AUDIT_STATUS" :key="a.v" :value="a.v">{{ a.t }}</option></select>
       <select v-if="!groupByComplex" v-model="sort" class="input w-auto"><option v-for="s in SORTS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
       <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명 검색" />
       <button v-if="!groupByComplex" class="btn-ghost btn-sm" :class="showTotal ? 'bg-brand-50 text-brand-700 ring-brand-300' : ''" @click="showTotal = !showTotal">합계 보기</button>
@@ -261,21 +275,28 @@ function resetFilters() {
             <tr>
               <th class="px-3 py-2.5 font-semibold">SKU / 상품</th>
               <th class="hidden px-3 py-2.5 font-semibold md:table-cell">경로</th>
-              <th class="hidden px-3 py-2.5 font-semibold sm:table-cell">위치</th>
+              <th class="hidden px-3 py-2.5 font-semibold sm:table-cell">보관위치</th>
               <th class="px-3 py-2.5 text-right font-semibold">재고</th>
               <th class="hidden px-3 py-2.5 text-right font-semibold sm:table-cell">안전</th>
-              <th class="px-3 py-2.5 font-semibold">상태</th>
+              <th class="px-3 py-2.5 font-semibold">재고상태</th>
+              <th class="px-3 py-2.5 font-semibold">실사상태</th>
               <th class="hidden px-3 py-2.5 text-right font-semibold lg:table-cell">입고/출고</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-50">
-            <tr v-for="s in rows" :key="s.id" class="hover:bg-slate-50/60">
+            <tr v-for="s in rows" :key="s.stockId" class="hover:bg-slate-50/60">
               <td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" /><div><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span><p class="mt-0.5 text-slate-700">{{ s.productName }} <span class="text-xs text-slate-400">{{ specText(s) }}</span></p></div></div></td>
               <td class="hidden px-3 py-2.5 text-xs text-slate-400 md:table-cell">{{ s.pathLabel }}</td>
               <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-left ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:ring-brand-300" title="보관위치 이력 보기" @click="openLocation(s)"><span v-if="s.locationLabel" class="text-slate-600">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">위치 미지정</span><span v-if="s.locationVerifiedAt" class="text-emerald-600" title="실사 검증됨">✓</span><svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
               <td class="px-3 py-2.5 text-right font-bold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-800'">{{ s.qty }}</td>
               <td class="hidden px-3 py-2.5 text-right text-slate-400 sm:table-cell">{{ s.safetyStock || '—' }}</td>
               <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span><span v-if="lifeBadge(s)" class="badge ml-1" :class="lifeBadge(s).c">{{ lifeBadge(s).t }}</span></td>
+              <td class="px-3 py-2.5">
+                <button class="inline-flex flex-col items-start gap-0.5 rounded px-1.5 py-1 text-left hover:bg-brand-50" title="실사 상세 보기" @click="openLocation(s)">
+                  <span class="badge" :class="auditMeta(s).c">{{ auditMeta(s).t }}</span>
+                  <span v-if="s.lastAuditDiff" class="text-[10px]" :class="s.lastAuditDiff < 0 ? 'text-rose-500' : 'text-emerald-600'">{{ s.lastAuditDiff > 0 ? '+' : '' }}{{ s.lastAuditDiff }}</span>
+                </button>
+              </td>
               <td class="hidden px-3 py-2.5 text-right text-xs text-slate-400 lg:table-cell">+{{ s.totalIn || 0 }} / -{{ s.totalOut || 0 }}</td>
             </tr>
           </tbody>
@@ -286,6 +307,7 @@ function resetFilters() {
               <td class="hidden sm:table-cell"></td>
               <td class="px-3 py-3 text-right text-brand-700">{{ stats.totalQty.toLocaleString() }}개</td>
               <td class="hidden sm:table-cell"></td>
+              <td></td>
               <td></td>
               <td class="hidden lg:table-cell"></td>
             </tr>
@@ -304,10 +326,27 @@ function resetFilters() {
             📍 현재: {{ locSku.locationLabel ? (locSku.complexName + ' › ' + locSku.locationLabel) : (locSku.complexName || '위치 미지정') }}
             <span v-if="locSku.storageLocationCode" class="font-mono text-xs text-slate-400">({{ locSku.storageLocationCode }})</span>
           </p>
-          <p v-if="locSku.locationVerifiedAt" class="mt-0.5 text-xs text-emerald-600">실사 검증: {{ locSku.locationVerifiedBy }} · {{ fmtDateTime(locSku.locationVerifiedAt) }}</p>
+          <p v-if="locSku.locationVerifiedAt" class="mt-0.5 text-xs text-emerald-600">위치 검증: {{ locSku.locationVerifiedBy }} · {{ fmtDateTime(locSku.locationVerifiedAt) }}</p>
         </div>
 
-        <p class="mb-1 text-xs font-semibold text-slate-500">변경 이력</p>
+        <!-- 실사 상태 -->
+        <div class="mb-3 rounded-lg border border-slate-200 p-3 text-sm">
+          <div class="mb-1 flex items-center gap-2">
+            <span class="text-xs font-semibold text-slate-500">실사상태</span>
+            <span class="badge" :class="auditMeta(locSku).c">{{ auditMeta(locSku).t }}</span>
+          </div>
+          <template v-if="locSku.lastAuditedAt">
+            <p class="text-slate-600">시스템 {{ (locSku.lastAuditCounted ?? 0) - (locSku.lastAuditDiff ?? 0) }} <span class="text-slate-300">→</span> 실사 <b class="text-slate-800">{{ locSku.lastAuditCounted }}</b>
+              <span class="ml-1 font-bold" :class="(locSku.lastAuditDiff || 0) < 0 ? 'text-rose-500' : (locSku.lastAuditDiff || 0) > 0 ? 'text-emerald-600' : 'text-slate-400'">(차이 {{ (locSku.lastAuditDiff || 0) > 0 ? '+' : '' }}{{ locSku.lastAuditDiff || 0 }})</span>
+            </p>
+            <p class="mt-0.5 text-xs text-slate-400">실사자: {{ locSku.lastAuditedBy || '-' }} · {{ fmtDateTime(locSku.lastAuditedAt) }}</p>
+            <p v-if="locSku.auditStatus === 'ok' && locSku.auditResolvedAt" class="mt-0.5 text-xs text-emerald-600">✓ 정상처리: {{ locSku.auditResolvedBy }}<span v-if="locSku.auditResolveReason"> · {{ locSku.auditResolveReason }}</span></p>
+            <p class="mt-1 text-[11px] text-slate-400">오차 정상처리는 <b>재고실사</b> 화면에서 할 수 있습니다.</p>
+          </template>
+          <p v-else class="text-xs text-slate-400">아직 실사하지 않은 재고입니다.</p>
+        </div>
+
+        <p class="mb-1 text-xs font-semibold text-slate-500">위치 변경 이력</p>
         <div v-if="locLoading" class="py-6 text-center text-sm text-slate-400">불러오는 중…</div>
         <div v-else-if="!locLogs.length" class="py-6 text-center text-sm text-slate-300">변경 이력이 없습니다.</div>
         <ul v-else class="divide-y divide-slate-50 text-sm">

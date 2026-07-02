@@ -47,6 +47,11 @@ public class StockMovement {
     private String pathLabel;
     private String memo = "";
     private String reason = "";
+    // 출고 상세 (주로 out 에서 사용)
+    private String usagePlace = "";   // 사용처
+    private String requestDept = "";  // 요청부서
+    private String requester = "";    // 요청자
+    private String handler = "";      // 담당자
     private String byUserId;
     private String byName;
 

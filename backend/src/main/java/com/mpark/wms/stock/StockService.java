@@ -92,7 +92,11 @@ public class StockService {
         st.setLastMovedBy(actor);
         st.setLastMovedAt(LocalDateTime.now());
 
-        saveMovement(st, sku, "out", val, -val, before, after, r.memo(), r.reason(), null);
+        StockMovement mv = saveMovement(st, sku, "out", val, -val, before, after, r.memo(), r.reason(), null);
+        mv.setUsagePlace(nz(r.usagePlace()));
+        mv.setRequestDept(nz(r.requestDept()));
+        mv.setRequester(nz(r.requester()));
+        mv.setHandler(nz(r.handler()));
         bumpDaily("out", val, +1);
         auditService.log("입/출고관리", "출고", sku.getId(),
                 sku.getCode() + " @" + nz2(st.getComplexName()) + " (" + before + "→" + after + ")", sku.getProductName());
@@ -117,11 +121,44 @@ public class StockService {
         st.setLastMovedBy(actor);
         st.setLastMovedAt(LocalDateTime.now());
 
+        // 실사면 마지막 실사 스냅샷/상태 갱신 (오차 0=정상, 오차≠0=비정상. 이전 정상처리 이력은 초기화)
+        if ("audit".equals(type)) {
+            st.setLastAuditedAt(LocalDateTime.now());
+            st.setLastAuditedBy(actor);
+            st.setLastAuditCounted(after);
+            st.setLastAuditDiff(delta);
+            st.setAuditStatus(delta == 0 ? "ok" : "mismatch");
+            st.setAuditResolvedAt(null);
+            st.setAuditResolvedBy(null);
+            st.setAuditResolveReason("");
+        }
+
         saveMovement(st, sku, type, Math.abs(delta), delta, before, after, r.memo(), r.reason(), null);
         bumpDaily(type, Math.abs(delta), +1);
         auditService.log("재고관리", "audit".equals(type) ? "재고실사" : "재고조정", sku.getId(),
                 sku.getCode() + " (" + before + "→" + after + ")", sku.getProductName());
         return new StockResult(before, after, delta);
+    }
+
+    /* ===================== 실사 오차 정상처리 ===================== */
+    public void resolveAudit(String stockId, String reason) {
+        if (!currentUser.isAdmin()) throw ApiException.forbidden("실사 정상처리 권한이 없습니다.");
+        if (isBlank(reason)) throw ApiException.badRequest("정상처리 사유를 입력하세요.");
+        Stock st = stockRepo.findByIdForUpdate(stockId)
+                .orElseThrow(() -> ApiException.notFound("재고를 찾을 수 없습니다."));
+        if (!"mismatch".equals(st.getAuditStatus())) throw ApiException.badRequest("정상처리할 실사 오차가 없습니다.");
+        Sku sku = skuRepo.findById(st.getSkuId()).orElse(null);
+        String actor = currentUser.name();
+        st.setAuditStatus("ok");
+        st.setAuditResolvedAt(LocalDateTime.now());
+        st.setAuditResolvedBy(actor);
+        st.setAuditResolveReason(reason);
+
+        Integer d = st.getLastAuditDiff();
+        String diffText = d == null ? "" : (d > 0 ? "+" : "") + d;
+        auditService.log("재고관리", "실사 정상처리", st.getSkuId(),
+                (sku == null ? "" : sku.getCode()) + " 오차 " + diffText + " · " + reason,
+                sku == null ? "" : sku.getProductName());
     }
 
     /* ===================== 재고이동 (재고행 → 도착 위치) ===================== */
@@ -334,7 +371,7 @@ public class StockService {
         return st;
     }
 
-    private void saveMovement(Stock st, Sku sku, String type, int qty, int delta, int before, int after,
+    private StockMovement saveMovement(Stock st, Sku sku, String type, int qty, int delta, int before, int after,
                               String memo, String reason, String transferId) {
         StockMovement m = new StockMovement();
         m.setStockId(st.getId());
@@ -354,7 +391,7 @@ public class StockService {
         m.setByUserId(currentUser.id());
         m.setByName(currentUser.name());
         m.setTransferId(transferId);
-        movementRepo.save(m);
+        return movementRepo.save(m);
     }
 
     private void bumpDaily(String type, int qty, int sign) {
