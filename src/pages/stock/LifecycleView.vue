@@ -109,7 +109,7 @@ async function openHistory(s) {
   histModal.value = true
   histLogs.value = []
   try {
-    histLogs.value = await listLifecycleLogs(s.id, 50)
+    histLogs.value = await listLifecycleLogs(s.skuId, 50)
   } catch (e) {
     toast.error('이력 조회 실패: ' + (e.message || e.code))
   }
@@ -152,7 +152,7 @@ async function openHistory(s) {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="s in paged" :key="s.id" class="hover:bg-slate-50/60" :class="s._st === 'over' ? 'bg-rose-50/40' : s._st === 'soon' ? 'bg-amber-50/30' : ''">
+          <tr v-for="s in paged" :key="s.stockId || s.skuId" class="hover:bg-slate-50/60" :class="s._st === 'over' ? 'bg-rose-50/40' : s._st === 'soon' ? 'bg-amber-50/30' : ''">
             <td class="px-3 py-2">
               <div class="flex items-center gap-2.5">
                 <img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" />
@@ -160,6 +160,7 @@ async function openHistory(s) {
                   <span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span>
                   <p class="text-slate-700">{{ s.productName }}</p>
                   <p v-if="s.locationLabel" class="truncate text-[11px] text-slate-400">📍 {{ s.complexName }} › {{ s.locationLabel }}</p>
+                  <p v-else-if="!s.stockId" class="text-[11px] text-slate-300">입고 전 (재고 없음)</p>
                 </div>
               </div>
             </td>
@@ -173,7 +174,7 @@ async function openHistory(s) {
             <td class="px-3 py-2"><span class="badge" :class="statusMeta[s._st]?.c">{{ statusMeta[s._st]?.t }}</span></td>
             <td class="whitespace-nowrap px-3 py-2 text-right">
               <button class="btn-ghost btn-sm" @click="openHistory(s)">이력</button>
-              <button class="btn-primary btn-sm ml-1" :disabled="busy" @click="openReplace(s)">교체 처리</button>
+              <button class="btn-primary btn-sm ml-1" :disabled="busy || !s.stockId" :title="!s.stockId ? '입고 후 교체 처리가 가능합니다' : ''" @click="openReplace(s)">교체 처리</button>
             </td>
           </tr>
         </tbody>

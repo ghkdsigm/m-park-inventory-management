@@ -65,6 +65,13 @@ public class StockService {
         st.setTotalIn(st.getTotalIn() + val);
         st.setLastMovedBy(actor);
         st.setLastMovedAt(LocalDateTime.now());
+        // 연한관리 SKU면 최초 입고 시 교체 일정 초기화 (기준일=오늘, 다음예정=오늘+주기)
+        if (sku.isLifecycleEnabled() && st.getNextReplaceAt() == null) {
+            LocalDateTime now = LocalDateTime.now();
+            st.setLastReplacedAt(now);
+            st.setNextReplaceAt(nextReplaceAt(sku, now));
+            st.setLastReplacedBy(actor);
+        }
         stockRepo.save(st);
 
         saveMovement(st, sku, "in", val, val, before, after, r.memo(), r.reason(), null);
@@ -291,15 +298,7 @@ public class StockService {
                 .orElseThrow(() -> ApiException.notFound("재고를 찾을 수 없습니다."));
         Sku sku = skuRepo.findById(st.getSkuId()).orElseThrow(() -> ApiException.notFound("SKU를 찾을 수 없습니다."));
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime next = null;
-        if (sku.isLifecycleEnabled()) {
-            int v = sku.getCycleValue() == null ? 0 : sku.getCycleValue();
-            next = switch (sku.getCycleUnit() == null ? "month" : sku.getCycleUnit().toLowerCase()) {
-                case "day" -> now.plusDays(v);
-                case "year" -> now.plusYears(v);
-                default -> now.plusMonths(v);
-            };
-        }
+        LocalDateTime next = nextReplaceAt(sku, now);
         String actor = currentUser.name();
         st.setLastReplacedAt(now);
         st.setNextReplaceAt(next);
@@ -417,6 +416,18 @@ public class StockService {
         String base = nz2(st.getComplexName());
         if (!isBlank(st.getLocationLabel())) return base.isBlank() ? st.getLocationLabel() : base + " > " + st.getLocationLabel();
         return base;
+    }
+
+    /** 연한 주기로 다음 교체 예정일 계산 (연한 미사용/주기 0이면 null) */
+    private static LocalDateTime nextReplaceAt(Sku sku, LocalDateTime from) {
+        if (!sku.isLifecycleEnabled()) return null;
+        int v = sku.getCycleValue() == null ? 0 : sku.getCycleValue();
+        if (v <= 0) return null;
+        return switch (sku.getCycleUnit() == null ? "month" : sku.getCycleUnit().toLowerCase()) {
+            case "day" -> from.plusDays(v);
+            case "year" -> from.plusYears(v);
+            default -> from.plusMonths(v);
+        };
     }
 
     static String status(int qty, int safety) {

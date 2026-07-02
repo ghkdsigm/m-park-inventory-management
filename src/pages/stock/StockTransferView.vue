@@ -5,11 +5,13 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import Pager from '@/components/ui/Pager.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { resolveImage } from '@/utils/image'
 import { specText } from '@/utils/sku'
 
 const auth = useAuthStore()
 const toast = useToast()
+const confirm = ref(null)
 
 const loading = ref(true)
 const rows = ref([])
@@ -85,6 +87,15 @@ async function submit() {
   const v = Number(qty.value)
   if (!Number.isFinite(v) || v <= 0) return toast.error('이동 수량을 입력하세요.')
   if (v > selected.value.qty) return toast.error(`재고 부족: 현재 ${selected.value.qty}개`)
+
+  const dest = storageLocs.value.find((l) => l.id === toLoc.value)
+  const destLabel = dest ? [dest.complexName, dest.zoneName, dest.subZoneName, dest.name].filter(Boolean).join(' › ') + (dest.code ? ` (${dest.code})` : '') : ''
+  const ok = await confirm.value.ask({
+    title: '재고이동',
+    message: `${selected.value.code} · ${v}개 이동\n출발: ${selected.value.complexName}${selected.value.locationLabel ? ' › ' + selected.value.locationLabel : ''}\n도착: ${destLabel}\n이동하시겠습니까?`,
+    confirmText: '재고 이동',
+  })
+  if (!ok) return
 
   working.value = true
   try {
@@ -208,5 +219,6 @@ async function submit() {
         </button>
       </div>
     </Teleport>
+    <ConfirmDialog ref="confirm" />
   </div>
 </template>

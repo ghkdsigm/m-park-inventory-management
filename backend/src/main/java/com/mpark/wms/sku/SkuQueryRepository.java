@@ -11,8 +11,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 재고 동적 검색/집계 — 재고행(stock) x SKU(변형) 조인 기준. 각 행 = (재고행 + 변형) = StockRow.
@@ -81,7 +83,8 @@ public class SkuQueryRepository {
         Object[] agg = bindAll(em.createQuery(
                 "select coalesce(sum(st.qty),0), " +
                 "coalesce(sum(case when st.status='low' then 1 else 0 end),0), " +
-                "coalesce(sum(case when st.status='out' then 1 else 0 end),0) " + where, Object[].class), p).getSingleResult();
+                "coalesce(sum(case when st.status='out' then 1 else 0 end),0), " +
+                "coalesce(sum(st.qty * sk.price),0) " + where, Object[].class), p).getSingleResult();
 
         int page = f.page() == null || f.page() < 1 ? 1 : f.page();
         int size = f.pageSize() == null || f.pageSize() < 1 ? 10 : f.pageSize();
@@ -90,7 +93,8 @@ public class SkuQueryRepository {
 
         List<StockRow> rows = new ArrayList<>();
         for (Object[] r : raw) rows.add(toRow((Stock) r[0], (Sku) r[1]));
-        return new SkuPageResult(rows, total, num(agg[0]), num(agg[1]), num(agg[2]));
+        java.math.BigDecimal totalValue = agg[3] == null ? java.math.BigDecimal.ZERO : new java.math.BigDecimal(agg[3].toString());
+        return new SkuPageResult(rows, total, num(agg[0]), num(agg[1]), num(agg[2]), totalValue);
     }
 
     /** SKU 단위 집계 목록 — 같은 SKU의 전 위치 재고를 한 행으로 묶는다. (입출고 통합조회 좌측) */
@@ -178,11 +182,23 @@ public class SkuQueryRepository {
     }
 
     public List<StockRow> lifecycleList() {
+        // 1) 재고행이 있는 연한 SKU — 재고행(위치)별로
         List<Object[]> raw = em.createQuery(
                 "select st, sk from Stock st, Sku sk where sk.id = st.skuId and sk.lifecycleEnabled = true " +
                 "order by coalesce(st.nextReplaceAt, st.createdAt) asc", Object[].class).getResultList();
         List<StockRow> out = new ArrayList<>();
-        for (Object[] r : raw) out.add(toRow((Stock) r[0], (Sku) r[1]));
+        Set<String> withStock = new HashSet<>();
+        for (Object[] r : raw) {
+            Sku sk = (Sku) r[1];
+            withStock.add(sk.getId());
+            out.add(toRow((Stock) r[0], sk));
+        }
+        // 2) 재고행이 없는 연한 SKU — 입고 전 상태로도 노출 (교체는 입고 후 가능)
+        List<Sku> lifeSkus = em.createQuery(
+                "select sk from Sku sk where sk.lifecycleEnabled = true order by sk.code asc", Sku.class).getResultList();
+        for (Sku sk : lifeSkus) {
+            if (!withStock.contains(sk.getId())) out.add(toRow(new Stock(), sk));
+        }
         return out;
     }
 

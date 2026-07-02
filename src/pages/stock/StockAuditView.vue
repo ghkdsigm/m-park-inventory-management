@@ -51,7 +51,7 @@ function auditMeta(s) {
 // 서버 페이징
 const sizes = [10, 30, 50]
 const page = ref(1)
-const pageSize = ref(30)
+const pageSize = ref(10)
 const total = ref(0)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 

@@ -2,13 +2,14 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  skus, categories, productCodes, complexes, storageLocations,
+  skus, categories, productCodes, complexes, storageLocations, zones, subZones,
   inboundStock, outboundStock, adjustStock, listMovements, voidMovement,
 } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import Pager from '@/components/ui/Pager.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { resolveImage } from '@/utils/image'
 import { fmtDateTime } from '@/utils/date'
 import { specText } from '@/utils/sku'
@@ -16,6 +17,7 @@ import { specText } from '@/utils/sku'
 const route = useRoute()
 const auth = useAuthStore()
 const toast = useToast()
+const confirm = ref(null)
 
 const OP = {
   in:     { title: '입고관리', sub: 'SKU와 보관위치를 선택해 입고합니다. (위치 필수)', qtyLabel: '입고 수량', btn: '입고 처리', btnClass: 'bg-emerald-600 hover:bg-emerald-700' },
@@ -53,6 +55,8 @@ const locBySku = ref({})   // skuId → 현재 재고 위치들(재고행)
 const rows = ref([])       // 출고/조정/실사용 재고행 목록
 const complexList = ref([])
 const storageLocs = ref([])
+const zoneList = ref([])
+const subZoneList = ref([])
 const categoryList = ref([])
 const productCodeList = ref([])
 
@@ -90,35 +94,26 @@ const locOptions = computed(() => locForComplex.value.filter((l) => (!inZone.val
 watch(inComplex, () => { inZone.value = ''; inSub.value = ''; inLoc.value = '' })
 watch(inZone, () => { inSub.value = ''; inLoc.value = '' })
 
-// 출고 사용처 선택 (사용처/공용 위치코드, 재고창고 전용 제외)
+// 출고 사용처 선택 (위치코드=구역/상세구역 기준, 사용처/공용 타입만)
+const USAGE_TYPES = ['usage', 'common']
 const outComplex = ref('')
 const outZone = ref('')
 const outSub = ref('')
-const outLoc = ref('')
-const outLocForComplex = computed(() => storageLocs.value.filter((l) => l.complexId === outComplex.value && l.type !== 'warehouse'))
-const outZoneChoices = computed(() => {
-  const m = new Map()
-  outLocForComplex.value.forEach((l) => l.zoneId && m.set(l.zoneId, l.zoneName))
-  return [...m].map(([id, name]) => ({ id, name }))
-})
-const outSubChoices = computed(() => {
-  const m = new Map()
-  outLocForComplex.value.forEach((l) => { if (l.zoneId === outZone.value && l.subZoneId) m.set(l.subZoneId, l.subZoneName) })
-  return [...m].map(([id, name]) => ({ id, name }))
-})
-const outLocOptions = computed(() => outLocForComplex.value.filter((l) => (!outZone.value || l.zoneId === outZone.value) && (!outSub.value || l.subZoneId === outSub.value)))
-watch(outComplex, () => { outZone.value = ''; outSub.value = ''; outLoc.value = '' })
-watch(outZone, () => { outSub.value = ''; outLoc.value = '' })
+const outZoneChoices = computed(() => zoneList.value.filter((z) => z.complexId === outComplex.value && USAGE_TYPES.includes(z.type)))
+const outSubChoices = computed(() => subZoneList.value.filter((s) => s.zoneId === outZone.value && USAGE_TYPES.includes(s.type)))
+watch(outComplex, () => { outZone.value = ''; outSub.value = '' })
+watch(outZone, () => { outSub.value = '' })
 const outLocLabel = computed(() => {
-  const l = storageLocs.value.find((x) => x.id === outLoc.value)
-  if (!l) return ''
-  const path = [l.complexName, l.locationLabel || l.name].filter(Boolean).join(' › ')
-  return l.code ? `${path} (${l.code})` : path
+  if (!outComplex.value || !outZone.value) return ''
+  const c = complexList.value.find((x) => x.id === outComplex.value)
+  const z = zoneList.value.find((x) => x.id === outZone.value)
+  const s = subZoneList.value.find((x) => x.id === outSub.value)
+  return [c?.name, z?.name, s?.name].filter(Boolean).join(' › ')
 })
 // 폐기/반품출고는 사용처 개념이 없어 숨김
 const NO_USAGE_REASONS = ['폐기', '반품출고']
 const showUsage = computed(() => op.value === 'out' && !NO_USAGE_REASONS.includes(reason.value))
-watch(reason, () => { if (!showUsage.value) { outComplex.value = ''; outZone.value = ''; outSub.value = ''; outLoc.value = '' } })
+watch(reason, () => { if (!showUsage.value) { outComplex.value = ''; outZone.value = ''; outSub.value = '' } })
 
 // 재고행 필터/조회
 const filteredVariants = computed(() =>
@@ -131,8 +126,8 @@ const filteredVariants = computed(() =>
 
 async function loadMasters() {
   try {
-    ;[complexList.value, storageLocs.value, categoryList.value, productCodeList.value] =
-      await Promise.all([complexes.list(), storageLocations.list(), categories.list(), productCodes.list()])
+    ;[complexList.value, storageLocs.value, categoryList.value, productCodeList.value, zoneList.value, subZoneList.value] =
+      await Promise.all([complexes.list(), storageLocations.list(), categories.list(), productCodes.list(), zones.listAll(), subZones.listAll()])
   } catch (e) { /* 무시 */ }
 }
 async function loadVariants() { try { variants.value = await skus.list() } catch (e) { /* */ } }
@@ -185,7 +180,7 @@ async function selectItem(x) {
   memo.value = ''; reason.value = ''
   requestDept.value = ''; requester.value = ''
   handler.value = auth.user?.name || ''
-  outComplex.value = ''; outZone.value = ''; outSub.value = ''; outLoc.value = ''
+  outComplex.value = ''; outZone.value = ''; outSub.value = ''
   const skuId = x.skuId || x.id
   movements.value = skuId ? await listMovements(skuId, 6) : []
 }
@@ -196,7 +191,15 @@ async function submit() {
   if (!Number.isFinite(v) || v < 0) return toast.error('수량을 올바르게 입력하세요.')
   if (!isSet.value && v <= 0) return toast.error('수량은 1 이상이어야 합니다.')
   if (!reason.value) return toast.error('사유를 선택하세요.')
+  if (isInbound.value && !inLoc.value) return toast.error('보관위치를 선택하세요. (입고는 위치 필수)')
   const memoVal = reason.value === '기타' ? memo.value : ''
+
+  const ok = await confirm.value.ask({
+    title: cfg.value.title,
+    message: `${selected.value.code} · ${selected.value.productName}\n${cfg.value.qtyLabel}: ${v}${isSet.value ? '개로 설정' : '개'} · 사유: ${reason.value}\n처리하시겠습니까?`,
+    confirmText: cfg.value.btn,
+  })
+  if (!ok) return
 
   working.value = true
   try {
@@ -377,19 +380,15 @@ async function confirmVoid() {
                 </select>
                 <div class="grid grid-cols-2 gap-1">
                   <select v-model="outZone" class="input" :disabled="!outComplex">
-                    <option value="">구역 전체</option>
+                    <option value="">구역 선택</option>
                     <option v-for="z in outZoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option>
                   </select>
                   <select v-model="outSub" class="input" :disabled="!outZone">
-                    <option value="">상세구역 전체</option>
+                    <option value="">상세구역(선택)</option>
                     <option v-for="sz in outSubChoices" :key="sz.id" :value="sz.id">{{ sz.name }}</option>
                   </select>
                 </div>
-                <select v-model="outLoc" class="input mt-1">
-                  <option value="">사용처 위치 선택</option>
-                  <option v-for="l in outLocOptions" :key="l.id" :value="l.id">{{ l.code }} · {{ [l.zoneName, l.subZoneName, l.name].filter(Boolean).join(' › ') || l.complexName }}</option>
-                </select>
-                <p v-if="outComplex && !outLocForComplex.length" class="mt-1 text-[11px] text-amber-600">이 단지에 사용처/공용 위치코드가 없습니다. 위치코드관리에서 타입을 지정하세요.</p>
+                <p v-if="outComplex && !outZoneChoices.length" class="mt-1 text-[11px] text-amber-600">이 단지에 사용처/공용 구역이 없습니다. 위치코드관리에서 구역 타입을 사용처/공용으로 지정하세요.</p>
               </div>
               <div>
                 <label class="label">요청부서</label>
@@ -454,5 +453,6 @@ async function confirmVoid() {
         </button>
       </div>
     </Teleport>
+    <ConfirmDialog ref="confirm" />
   </div>
 </template>

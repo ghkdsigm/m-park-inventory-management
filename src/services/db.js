@@ -99,6 +99,7 @@ export const skus = {
       totalQty: r?.totalQty || 0,
       lowCount: r?.lowCount || 0,
       outCount: r?.outCount || 0,
+      totalValue: r?.totalValue || 0,
     }
   },
   /** SKU 단위 집계 목록 (전 위치 합산). 입출고 통합조회 좌측 목록용. */

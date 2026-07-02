@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { skus, products, storageLocations, inboundStock, outboundStock, adjustStock, listMovements, replaceLifecycle, voidMovement } from '@/services/db'
+import { skus, products, storageLocations, zones, subZones, inboundStock, outboundStock, adjustStock, listMovements, replaceLifecycle, voidMovement } from '@/services/db'
 import { setAutoLogin, getAutoLogin } from '@/supabase'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -52,6 +52,34 @@ const inMemo = ref('')
 const outQty = ref(1)
 const outReason = ref('')
 const outMemo = ref('')
+// 출고 상세
+const requestDept = ref('')
+const requester = ref('')
+const handler = ref('')
+const USAGE_TYPES = ['usage', 'common']
+const zoneList = ref([])
+const subZoneList = ref([])
+const outComplex = ref('')
+const outZone = ref('')
+const outSub = ref('')
+const showUsage = computed(() => !['폐기', '반품출고'].includes(outReason.value))
+const outComplexChoices = computed(() => {
+  const m = new Map()
+  zoneList.value.forEach((z) => { if (USAGE_TYPES.includes(z.type) && z.complexId) m.set(z.complexId, z.complexName) })
+  return [...m].map(([id, name]) => ({ id, name }))
+})
+const outZoneChoices = computed(() => zoneList.value.filter((z) => z.complexId === outComplex.value && USAGE_TYPES.includes(z.type)))
+const outSubChoices = computed(() => subZoneList.value.filter((s) => s.zoneId === outZone.value && USAGE_TYPES.includes(s.type)))
+const outLocLabel = computed(() => {
+  if (!outComplex.value || !outZone.value) return ''
+  const c = outComplexChoices.value.find((x) => x.id === outComplex.value)
+  const z = zoneList.value.find((x) => x.id === outZone.value)
+  const s = subZoneList.value.find((x) => x.id === outSub.value)
+  return [c?.name, z?.name, s?.name].filter(Boolean).join(' › ')
+})
+function onOutComplex() { outZone.value = ''; outSub.value = '' }
+function onOutZone() { outSub.value = '' }
+function onOutReason() { if (!showUsage.value) { outComplex.value = ''; outZone.value = ''; outSub.value = '' } }
 const setQty = ref(0)
 const adjReason = ref('')
 const adjMemo = ref('')
@@ -59,7 +87,11 @@ const adjMemo = ref('')
 function pickMode(m) {
   mode.value = m
   if (m === 'in') { inQty.value = 1; inReason.value = ''; inMemo.value = '' }
-  else if (m === 'out') { outQty.value = 1; outReason.value = ''; outMemo.value = '' }
+  else if (m === 'out') {
+    outQty.value = 1; outReason.value = ''; outMemo.value = ''
+    requestDept.value = ''; requester.value = ''; handler.value = auth.user?.name || ''
+    outComplex.value = ''; outZone.value = ''; outSub.value = ''
+  }
 }
 
 /* 입고 보관위치 선택 (단지 → 구역 → 상세구역 → 보관위치) */
@@ -125,7 +157,9 @@ async function load() {
       product.value = sku.value.productId ? await products.get(sku.value.productId) : null
       await loadStock()
       movements.value = await listMovements(sku.value.id, 20)
-      if (auth.canStock) storageLocs.value = await storageLocations.list()
+      if (auth.canStock) {
+        ;[storageLocs.value, zoneList.value, subZoneList.value] = await Promise.all([storageLocations.list(), zones.listAll(), subZones.listAll()])
+      }
     }
   } catch (e) { toast.error('조회 실패: ' + (e.message || e.code)) } finally { loading.value = false }
 }
@@ -193,6 +227,10 @@ async function doInbound() {
   if (!inReason.value) return toast.error('사유를 선택하세요.')
   const v = Number(inQty.value)
   if (!Number.isFinite(v) || v <= 0) return toast.error('수량은 1 이상이어야 합니다.')
+  const loc = storageLocs.value.find((l) => l.id === inLoc.value)
+  const locLabel = loc ? [loc.code, [loc.zoneName, loc.subZoneName, loc.name].filter(Boolean).join(' › ')].filter(Boolean).join(' · ') : ''
+  const ok = await confirm.value.ask({ title: '입고', message: `${sku.value.code} · ${v}개\n위치: ${locLabel}\n입고하시겠습니까?`, confirmText: '입고' })
+  if (!ok) return
   working.value = true
   try {
     const r = await inboundStock(sku.value.id, inLoc.value, v, inReason.value === '기타' ? inMemo.value : '', inReason.value)
@@ -207,9 +245,18 @@ async function doOutbound() {
   const v = Number(outQty.value)
   if (!Number.isFinite(v) || v <= 0) return toast.error('수량은 1 이상이어야 합니다.')
   if (v > selectedStock.value.qty) return toast.error(`재고 부족: 현재 ${selectedStock.value.qty}개`)
+  const ok = await confirm.value.ask({
+    title: '출고',
+    message: `${sku.value.code} · ${v}개\n위치: ${selectedStock.value.complexName}${selectedStock.value.locationLabel ? ' › ' + selectedStock.value.locationLabel : ''}\n재고 ${selectedStock.value.qty}→${selectedStock.value.qty - v}개\n출고하시겠습니까?`,
+    confirmText: '출고',
+  })
+  if (!ok) return
   working.value = true
   try {
-    const r = await outboundStock(selectedStock.value.stockId, v, outReason.value === '기타' ? outMemo.value : '', outReason.value)
+    const r = await outboundStock(selectedStock.value.stockId, v, outReason.value === '기타' ? outMemo.value : '', outReason.value, {
+      usagePlace: outLocLabel.value, requestDept: requestDept.value.trim(),
+      requester: requester.value.trim(), handler: handler.value.trim(),
+    })
     toast.success(`출고 완료 · 재고 ${r.before}→${r.after}개`)
     mode.value = ''; await load()
   } catch (e) { toast.error(e.message || '처리 실패') } finally { working.value = false }
@@ -344,8 +391,28 @@ const fmtTime = fmtDateTime
               <input v-model.number="outQty" type="number" min="1" class="input h-14 flex-1 text-center text-2xl font-bold" />
               <button class="btn-ghost h-14 w-20 shrink-0 text-3xl" @click="outQty++">＋</button>
             </div>
-            <select v-model="outReason" class="input mt-3"><option value="">사유 / 구분 선택 *</option><option v-for="r in OUT_REASONS" :key="r" :value="r">{{ r }}</option></select>
+            <select v-model="outReason" class="input mt-3" @change="onOutReason"><option value="">사유 / 구분 선택 *</option><option v-for="r in OUT_REASONS" :key="r" :value="r">{{ r }}</option></select>
             <input v-if="outReason === '기타'" v-model="outMemo" class="input mt-2" placeholder="상세 사유" />
+
+            <!-- 출고 상세 -->
+            <div class="mt-3 space-y-2 rounded-lg border border-slate-200 p-3">
+              <p class="text-xs font-semibold text-slate-500">출고 상세</p>
+              <div v-if="showUsage">
+                <label class="label">사용처 <span class="font-normal text-slate-400">(사용처/공용)</span></label>
+                <select v-model="outComplex" class="input" @change="onOutComplex"><option value="">단지 선택</option><option v-for="c in outComplexChoices" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+                <div class="mt-2 grid grid-cols-2 gap-2">
+                  <select v-model="outZone" class="input" :disabled="!outComplex" @change="onOutZone"><option value="">구역 선택</option><option v-for="z in outZoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option></select>
+                  <select v-model="outSub" class="input" :disabled="!outZone"><option value="">상세구역(선택)</option><option v-for="sz in outSubChoices" :key="sz.id" :value="sz.id">{{ sz.name }}</option></select>
+                </div>
+                <p v-if="outComplex && !outZoneChoices.length" class="mt-1 text-[11px] text-amber-600">사용처/공용 구역이 없습니다. 위치코드관리에서 지정하세요.</p>
+              </div>
+              <input v-model="requestDept" class="input" placeholder="요청부서 (예: 시설관리팀)" />
+              <div class="grid grid-cols-2 gap-2">
+                <input v-model="requester" class="input" placeholder="요청자" />
+                <input v-model="handler" class="input" placeholder="담당자" />
+              </div>
+            </div>
+
             <button class="btn mt-3 w-full bg-sky-600 py-3 text-white hover:bg-sky-700" :disabled="working || selectedStock.qty < outQty" @click="doOutbound">출고 -{{ outQty }}</button>
           </template>
         </div>

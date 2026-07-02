@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { skus, complexes, categories, productCodes, productDetails, listLocationLogs } from '@/services/db'
+import { skus, complexes, categories, productCodes, productDetails, listLocationLogs, listMovements } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
@@ -21,14 +21,18 @@ function lifeBadge(s) {
 const locModal = ref(false)
 const locSku = ref(null)
 const locLogs = ref([])
+const usageLogs = ref([]) // 사용처 이력 = 출고 내역
 const locLoading = ref(false)
 async function openLocation(s) {
   locSku.value = s
   locLogs.value = []
+  usageLogs.value = []
   locModal.value = true
   locLoading.value = true
   try {
-    locLogs.value = await listLocationLogs(s.skuId, 50)
+    const [ll, mv] = await Promise.all([listLocationLogs(s.skuId, 50), listMovements(s.skuId, 100)])
+    locLogs.value = ll
+    usageLogs.value = (mv || []).filter((m) => m.type === 'out')
   } catch (e) {
     /* 무시 */
   } finally {
@@ -50,6 +54,7 @@ const rows = ref([])
 const groups = ref([])
 const total = ref(0)
 const totalQty = ref(0)
+const totalValue = ref(0)
 const lowCount = ref(0)
 const outCount = ref(0)
 
@@ -118,6 +123,7 @@ async function fetchPage() {
       rows.value = r.rows
       total.value = r.total
       totalQty.value = r.totalQty
+      totalValue.value = r.totalValue
       lowCount.value = r.lowCount
       outCount.value = r.outCount
     }
@@ -277,6 +283,8 @@ function resetFilters() {
               <th class="hidden px-3 py-2.5 font-semibold md:table-cell">경로</th>
               <th class="hidden px-3 py-2.5 font-semibold sm:table-cell">보관위치</th>
               <th class="px-3 py-2.5 text-right font-semibold">재고</th>
+              <th class="hidden px-3 py-2.5 text-right font-semibold md:table-cell">단가</th>
+              <th class="hidden px-3 py-2.5 text-right font-semibold md:table-cell">총가격</th>
               <th class="hidden px-3 py-2.5 text-right font-semibold sm:table-cell">안전</th>
               <th class="px-3 py-2.5 font-semibold">재고상태</th>
               <th class="px-3 py-2.5 font-semibold">실사상태</th>
@@ -289,6 +297,8 @@ function resetFilters() {
               <td class="hidden px-3 py-2.5 text-xs text-slate-400 md:table-cell">{{ s.pathLabel }}</td>
               <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-left ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:ring-brand-300" title="보관위치 이력 보기" @click="openLocation(s)"><span v-if="s.locationLabel" class="text-slate-600">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">위치 미지정</span><span v-if="s.locationVerifiedAt" class="text-emerald-600" title="실사 검증됨">✓</span><svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
               <td class="px-3 py-2.5 text-right font-bold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-800'">{{ s.qty }}</td>
+              <td class="hidden px-3 py-2.5 text-right text-slate-500 md:table-cell">{{ Number(s.price || 0).toLocaleString() }}원</td>
+              <td class="hidden px-3 py-2.5 text-right font-medium text-slate-700 md:table-cell">{{ (Number(s.price || 0) * Number(s.qty || 0)).toLocaleString() }}원</td>
               <td class="hidden px-3 py-2.5 text-right text-slate-400 sm:table-cell">{{ s.safetyStock || '—' }}</td>
               <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span><span v-if="lifeBadge(s)" class="badge ml-1" :class="lifeBadge(s).c">{{ lifeBadge(s).t }}</span></td>
               <td class="px-3 py-2.5">
@@ -306,6 +316,8 @@ function resetFilters() {
               <td class="hidden md:table-cell"></td>
               <td class="hidden sm:table-cell"></td>
               <td class="px-3 py-3 text-right text-brand-700">{{ stats.totalQty.toLocaleString() }}개</td>
+              <td class="hidden md:table-cell"></td>
+              <td class="hidden px-3 py-3 text-right text-brand-700 md:table-cell">{{ Number(totalValue).toLocaleString() }}원</td>
               <td class="hidden sm:table-cell"></td>
               <td></td>
               <td></td>
@@ -359,6 +371,28 @@ function resetFilters() {
               <span class="text-xs text-slate-400">{{ fmtDateTime(l.at) }}</span>
             </div>
             <p class="text-xs text-slate-400">변경자: {{ l.byName }}</p>
+          </li>
+        </ul>
+
+        <p class="mb-1 mt-4 text-xs font-semibold text-slate-500">사용처 이력 <span class="font-normal text-slate-400">(출고)</span></p>
+        <div v-if="locLoading" class="py-6 text-center text-sm text-slate-400">불러오는 중…</div>
+        <div v-else-if="!usageLogs.length" class="py-6 text-center text-sm text-slate-300">사용처 이력이 없습니다.</div>
+        <ul v-else class="divide-y divide-slate-50 text-sm">
+          <li v-for="m in usageLogs" :key="m.id" class="py-2">
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-slate-700">
+                📦 {{ m.usagePlace || '사용처 미지정' }}
+                <span class="ml-1 font-bold text-rose-500">-{{ m.qty }}개</span>
+                <span v-if="m.voided" class="badge ml-1 bg-slate-100 text-[10px] text-slate-400 line-through">취소됨</span>
+              </span>
+              <span class="text-xs text-slate-400">{{ fmtDateTime(m.at) }}</span>
+            </div>
+            <p class="text-xs text-slate-400">
+              <span v-if="m.reason">{{ m.reason }} · </span>
+              <span v-if="m.requestDept">{{ m.requestDept }} · </span>
+              <span v-if="m.requester">요청 {{ m.requester }} · </span>
+              담당 {{ m.handler || m.byName }}
+            </p>
           </li>
         </ul>
       </div>
