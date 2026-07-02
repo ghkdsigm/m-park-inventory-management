@@ -1,5 +1,6 @@
 server:
-  port: 8080
+  # 로컬/도커는 8080, Railway 등 PaaS 는 주입되는 PORT 로 리슨
+  port: ${PORT:8080}
 
 spring:
   application:
