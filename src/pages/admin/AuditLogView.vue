@@ -78,6 +78,31 @@ const moduleCounts = computed(() => {
   return m
 })
 const { paged, page, pageSize, sizes, total, totalPages } = usePagination(logs, 30)
+
+// 변경내용 diff — before/after 요약("k=v, k=v")을 파싱해 값이 바뀐 키만 추출
+function parseKv(s) {
+  const map = {}
+  if (!s) return map
+  for (const part of String(s).split(/,\s*/)) {
+    const i = part.indexOf('=')
+    if (i === -1) { if (part.trim()) map[part.trim()] = '' }
+    else map[part.slice(0, i).trim()] = part.slice(i + 1).trim()
+  }
+  return map
+}
+function changes(l) {
+  const hasB = !!l.beforeValue, hasA = !!l.afterValue
+  const b = parseKv(l.beforeValue), a = parseKv(l.afterValue)
+  const keys = [...new Set([...Object.keys(b), ...Object.keys(a)])]
+  const out = []
+  for (const k of keys) {
+    const bv = b[k] ?? '', av = a[k] ?? ''
+    if (hasB && hasA) { if (bv !== av) out.push({ k, b: bv, a: av }) }   // 수정: 바뀐 것만
+    else if (hasA) out.push({ k, b: null, a: av })                       // 생성: 새 값
+    else out.push({ k, b: bv, a: null })                                 // 삭제: 이전 값
+  }
+  return out
+}
 </script>
 
 <template>
@@ -134,11 +159,14 @@ const { paged, page, pageSize, sizes, total, totalPages } = usePagination(logs, 
             <td class="px-3 py-2.5"><span class="font-mono text-xs text-slate-500">{{ l.label || '—' }}</span></td>
             <td class="px-3 py-2.5 text-slate-700">{{ l.name || '—' }}</td>
             <td class="px-3 py-2.5 text-xs text-slate-500">
-              <span v-if="l.beforeValue || l.afterValue">
-                <span class="text-slate-400">{{ l.beforeValue || '—' }}</span>
-                <span class="mx-1 text-slate-300">→</span>
-                <span class="text-slate-700">{{ l.afterValue || '—' }}</span>
-              </span>
+              <template v-if="changes(l).length">
+                <div v-for="c in changes(l)" :key="c.k" class="whitespace-nowrap">
+                  <span class="font-medium text-slate-500">{{ c.k }}</span>:
+                  <span v-if="c.b !== null" :class="c.a !== null ? 'text-slate-400' : 'text-slate-700'">{{ c.b || '∅' }}</span>
+                  <span v-if="c.b !== null && c.a !== null" class="mx-0.5 text-slate-300">→</span>
+                  <span v-if="c.a !== null" class="text-slate-700">{{ c.a || '∅' }}</span>
+                </div>
+              </template>
               <span v-else class="text-slate-300">—</span>
             </td>
             <td class="whitespace-nowrap px-3 py-2.5 text-slate-600">{{ l.byName || l.name || '(알수없음)' }}</td>
