@@ -253,6 +253,19 @@ function showQr(s) { qrSku.value = s; qrModal.value = true }
 const detailModal = ref(false)
 const detailSku = ref(null)
 function openDetail(s) { detailSku.value = s; detailModal.value = true }
+async function copyCode(code) {
+  const text = code || ''
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta)
+    }
+    toast.success('SKU 코드 복사됨')
+  } catch (e) { toast.error('복사 실패') }
+}
 function cycleUnitText(u) { return CYCLE_UNITS.find((x) => x.v === u)?.t || u }
 function editFromDetail() { detailModal.value = false; openEdit(detailSku.value) }
 
@@ -454,7 +467,12 @@ async function printSelected() {
         <div class="flex gap-4">
           <img :src="resolveImage(detailSku)" class="h-28 w-28 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="" />
           <div class="min-w-0 flex-1">
-            <span class="badge bg-brand-50 font-mono text-brand-700">{{ detailSku.code }}</span>
+            <div class="flex items-center gap-1.5">
+              <span class="badge bg-brand-50 font-mono text-brand-700">{{ detailSku.code }}</span>
+              <button type="button" class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-brand-600" title="SKU 코드 복사" @click="copyCode(detailSku.code)">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+              </button>
+            </div>
             <p class="mt-1 text-lg font-bold text-slate-800">{{ detailSku.productName }}<span v-if="detailSku.spec" class="text-brand-600"> · {{ detailSku.spec }}</span></p>
             <p class="mt-0.5 text-xs text-slate-400">{{ detailSku.pathLabel || '경로 미지정' }}</p>
           </div>
