@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,6 +16,8 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, St
     List<StockMovement> findBySkuIdOrderByAtDesc(String skuId, Pageable pageable);
 
     List<StockMovement> findAllByOrderByAtDesc(Pageable pageable);
+
+    List<StockMovement> findByAtBetweenOrderByAtDesc(LocalDateTime from, LocalDateTime to, Pageable pageable);
 
     /** 취소 처리 시 원거래 행 잠금 */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

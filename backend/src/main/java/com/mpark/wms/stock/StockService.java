@@ -339,6 +339,11 @@ public class StockService {
     }
 
     @Transactional(readOnly = true)
+    public List<StockMovement> movementsByDate(LocalDate date, int max) {
+        return movementRepo.findByAtBetweenOrderByAtDesc(date.atStartOfDay(), date.plusDays(1).atStartOfDay(), PageRequest.of(0, max));
+    }
+
+    @Transactional(readOnly = true)
     public List<LifecycleLog> listLifecycleLogs(String skuId, int max) {
         return lifecycleLogRepo.findBySkuIdOrderByAtDesc(skuId, PageRequest.of(0, max));
     }

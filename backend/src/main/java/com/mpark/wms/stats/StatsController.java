@@ -24,4 +24,10 @@ public class StatsController {
     public DailyStats today() {
         return repo.findById(LocalDate.now()).orElse(null);
     }
+
+    /** 특정 기간(달력 월 등) 일별 집계 조회 */
+    @GetMapping("/range")
+    public List<DailyStats> range(@RequestParam String from, @RequestParam String to) {
+        return repo.findByStatDateBetweenOrderByStatDateAsc(LocalDate.parse(from), LocalDate.parse(to));
+    }
 }

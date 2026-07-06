@@ -8,4 +8,5 @@ import java.util.List;
 
 public interface DailyStatsRepository extends JpaRepository<DailyStats, LocalDate> {
     List<DailyStats> findAllByOrderByStatDateDesc(Pageable pageable);
+    List<DailyStats> findByStatDateBetweenOrderByStatDateAsc(LocalDate from, LocalDate to);
 }

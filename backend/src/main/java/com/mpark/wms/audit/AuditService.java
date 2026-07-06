@@ -82,11 +82,14 @@ public class AuditService {
 
     @Transactional(readOnly = true)
     public List<TopChanged> topChangedSkus(int limit) {
+        // 상품명은 AuditLog 가 아니라 실제 Sku 테이블에서 직접 (항상 정확)
         List<Object[]> rows = em.createQuery(
-                "select a.rowId, max(a.label), count(a) from AuditLog a where a.tableName = 'skus' and a.rowId is not null group by a.rowId order by count(a) desc", Object[].class)
+                "select sk.id, sk.code, sk.productName, count(a) from AuditLog a, Sku sk " +
+                "where a.tableName = 'skus' and a.rowId = sk.id " +
+                "group by sk.id, sk.code, sk.productName order by count(a) desc", Object[].class)
                 .setMaxResults(limit).getResultList();
         List<TopChanged> out = new ArrayList<>();
-        for (Object[] r : rows) out.add(new TopChanged((String) r[0], (String) r[1], num(r[2])));
+        for (Object[] r : rows) out.add(new TopChanged((String) r[0], (String) r[1], (String) r[2], num(r[3])));
         return out;
     }
 

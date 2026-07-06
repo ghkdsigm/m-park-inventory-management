@@ -1,10 +1,13 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { skus, recentMovements, getTodayStats, getDailyStats, auditTopUsers, topProductsBySku, topChangedSkus } from '@/services/db'
+import { skus, recentMovements, getDailyStats, getDailyStatsRange, movementsByDate, auditTopUsers, topProductsBySku, topChangedSkus } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import BaseModal from '@/components/ui/BaseModal.vue'
+import { resolveImage } from '@/utils/image'
+import { specText } from '@/utils/sku'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -12,7 +15,6 @@ const loading = ref(true)
 const stat = ref({ complexes: 0, products: 0, skus: 0, totalQty: 0, low: 0, out: 0 })
 const lowList = ref([])
 const moves = ref([])
-const today = ref(null)
 const lifeStat = ref({ soon: 0, over: 0 })
 const lifeList = ref([])
 const topUsers = ref([])
@@ -22,17 +24,87 @@ const byComplex = ref([])
 const daily = ref([])
 const stockStat = ref({ total: 0, normal: 0, low: 0, out: 0 })
 
+/* ===== 입출고 달력 조회 ===== */
+const _now = new Date()
+const calYear = ref(_now.getFullYear())
+const calMonth = ref(_now.getMonth()) // 0-11
+const pad2 = (n) => String(n).padStart(2, '0')
+const ymd = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}` // m: 0-based
+const todayStr = ymd(_now.getFullYear(), _now.getMonth(), _now.getDate())
+const selectedDate = ref(todayStr)
+const monthStats = ref({}) // 'YYYY-MM-DD' -> stats
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
+const yearOptions = computed(() => {
+  const y = _now.getFullYear()
+  return [y - 4, y - 3, y - 2, y - 1, y, y + 1]
+})
+const calendarCells = computed(() => {
+  const startDow = new Date(calYear.value, calMonth.value, 1).getDay()
+  const days = new Date(calYear.value, calMonth.value + 1, 0).getDate()
+  const cells = []
+  for (let i = 0; i < startDow; i++) cells.push(null)
+  for (let d = 1; d <= days; d++) cells.push(d)
+  return cells
+})
+async function loadMonth() {
+  const last = new Date(calYear.value, calMonth.value + 1, 0).getDate()
+  try {
+    const rows = await getDailyStatsRange(ymd(calYear.value, calMonth.value, 1), ymd(calYear.value, calMonth.value, last))
+    const map = {}
+    rows.forEach((r) => { map[r.date] = r })
+    monthStats.value = map
+  } catch (e) { monthStats.value = {} }
+}
+function shiftMonth(delta) {
+  let m = calMonth.value + delta, y = calYear.value
+  if (m < 0) { m = 11; y-- } else if (m > 11) { m = 0; y++ }
+  calMonth.value = m; calYear.value = y
+  loadMonth()
+}
+function onYm() { loadMonth() }
+function pickDay(d) { if (d) selectedDate.value = ymd(calYear.value, calMonth.value, d) }
+function cellStats(d) { return d ? monthStats.value[ymd(calYear.value, calMonth.value, d)] : null }
+function dayActive(d) { const s = cellStats(d); return s && ((s.inCount || 0) + (s.outCount || 0)) > 0 }
+function isSelected(d) { return d && ymd(calYear.value, calMonth.value, d) === selectedDate.value }
+function isToday(d) { return d && ymd(calYear.value, calMonth.value, d) === todayStr }
+// 선택일 집계는 그날 실제 movements 에서 직접 계산 (daily-stats 배포 여부와 무관하게 정확)
+const selectedStats = computed(() => {
+  const rows = dayMoves.value.filter((m) => !m.voided)
+  const ins = rows.filter((m) => m.type === 'in')
+  const outs = rows.filter((m) => m.type === 'out')
+  const sum = (arr) => arr.reduce((a, m) => a + (m.qty || 0), 0)
+  return { inCount: ins.length, outCount: outs.length, inQty: sum(ins), outQty: sum(outs) }
+})
+const selectedLabel = computed(() => {
+  const [y, m, d] = selectedDate.value.split('-').map(Number)
+  const w = WEEKDAYS[new Date(y, m - 1, d).getDay()]
+  return `${y}년 ${m}월 ${d}일 (${w})`
+})
+
+// 선택일 입고/출고 건별 목록
+const dayMoves = ref([])
+const dayMovesLoading = ref(false)
+async function loadDayMoves() {
+  dayMovesLoading.value = true
+  try {
+    const rows = await movementsByDate(selectedDate.value, 300)
+    // 백엔드가 date 필터 미지원이어도 선택일로 한 번 더 거름
+    dayMoves.value = rows.filter((m) => (m.type === 'in' || m.type === 'out') && fmtDate(m.at) === selectedDate.value)
+  } catch (e) { dayMoves.value = [] } finally { dayMovesLoading.value = false }
+}
+watch(selectedDate, loadDayMoves)
+
 const typeLabel = { in: '입고', out: '출고', adjust: '조정', audit: '실사' }
 const typeColor = { in: 'bg-emerald-500', out: 'bg-sky-500', adjust: 'bg-amber-500', audit: 'bg-violet-500' }
 
 onMounted(async () => {
   try {
-    const [sum, mv, ts] = await Promise.all([
+    const [sum, mv] = await Promise.all([
       skus.dashboardSummary(),
       recentMovements(8),
-      getTodayStats(),
     ])
-    today.value = ts
+    await loadMonth()
+    loadDayMoves()
     stat.value = {
       complexes: sum.complexCount,
       products: sum.productCount,
@@ -56,7 +128,7 @@ onMounted(async () => {
 
     // 관리자 통계 (admin 전용)
     if (auth.isAdmin) {
-      const [tu, tp, ts2] = await Promise.all([auditTopUsers(10), topProductsBySku(10), topChangedSkus(10)])
+      const [tu, tp, ts2] = await Promise.all([auditTopUsers(20), topProductsBySku(20), topChangedSkus(10)])
       topUsers.value = tu
       topProds.value = tp
       topSkus.value = ts2
@@ -104,6 +176,18 @@ const dailyChart = computed(() => {
 })
 
 const fmtTime = fmtDateTime
+
+/* ===== 변경 많은 SKU 상세 팝업 ===== */
+const skuModal = ref(false)
+const skuDetail = ref(null)
+const skuLoading = ref(false)
+async function openSkuDetail(rowId) {
+  if (!rowId) return
+  skuModal.value = true
+  skuLoading.value = true
+  skuDetail.value = null
+  try { skuDetail.value = await skus.get(rowId) } catch (e) { skuDetail.value = null } finally { skuLoading.value = false }
+}
 </script>
 
 <template>
@@ -174,14 +258,19 @@ const fmtTime = fmtDateTime
 
         <!-- 최근 입출고 추이 -->
         <div class="card p-5">
-          <h3 class="mb-1 text-sm font-bold text-slate-700">최근 입출고 추이 <span class="text-xs font-normal text-slate-400">(수량)</span></h3>
+          <h3 class="mb-1 text-sm font-bold text-slate-700">최근 1주일 입출고 추이 <span class="text-xs font-normal text-slate-400">(수량)</span></h3>
           <div class="mb-2 flex gap-3 text-[11px] text-slate-400">
             <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-sm bg-emerald-500" />입고</span>
             <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-sm bg-sky-500" />출고</span>
           </div>
           <div v-if="!dailyChart.length" class="py-6 text-center text-sm text-slate-300">최근 입출고 기록이 없습니다.</div>
-          <div v-else class="flex h-32 items-end gap-2">
+          <div v-else class="flex items-end gap-2">
             <div v-for="d in dailyChart" :key="d.date" class="flex flex-1 flex-col items-center gap-1">
+              <div class="flex flex-col items-center text-[9px] font-semibold leading-tight">
+                <span v-if="d.inQty" class="text-emerald-600">+{{ d.inQty }}</span>
+                <span v-if="d.outQty" class="text-sky-600">-{{ d.outQty }}</span>
+                <span v-if="!d.inQty && !d.outQty" class="text-slate-300">0</span>
+              </div>
               <div class="flex h-24 w-full items-end justify-center gap-0.5">
                 <div class="w-1/2 rounded-t bg-emerald-500" :style="{ height: Math.max(2, d.inH) + '%' }" :title="'입고 ' + d.inQty" />
                 <div class="w-1/2 rounded-t bg-sky-500" :style="{ height: Math.max(2, d.outH) + '%' }" :title="'출고 ' + d.outQty" />
@@ -192,17 +281,93 @@ const fmtTime = fmtDateTime
         </div>
       </div>
 
-      <!-- 오늘 입출고 (집계 문서 기반, 로그 전체 스캔 없음) -->
+      <!-- 입출고 조회 (달력 + 선택일 집계) -->
       <div class="mt-4 card p-4">
-        <div class="flex items-center justify-between">
-          <h3 class="text-sm font-bold text-slate-700">오늘 입출고</h3>
-          <span class="text-xs text-slate-400">{{ new Date().toLocaleDateString('ko-KR') }}</span>
-        </div>
-        <div class="mt-2 grid grid-cols-4 gap-2 text-center">
-          <div class="rounded-lg bg-emerald-50 py-2"><p class="text-xs text-emerald-600">입고건</p><p class="text-lg font-bold text-emerald-700">{{ today?.inCount || 0 }}</p></div>
-          <div class="rounded-lg bg-sky-50 py-2"><p class="text-xs text-sky-600">출고건</p><p class="text-lg font-bold text-sky-700">{{ today?.outCount || 0 }}</p></div>
-          <div class="rounded-lg bg-slate-50 py-2"><p class="text-xs text-slate-500">입고수량</p><p class="text-lg font-bold text-slate-700">+{{ today?.inQty || 0 }}</p></div>
-          <div class="rounded-lg bg-slate-50 py-2"><p class="text-xs text-slate-500">출고수량</p><p class="text-lg font-bold text-slate-700">-{{ today?.outQty || 0 }}</p></div>
+        <h3 class="mb-3 text-sm font-bold text-slate-700">입출고 조회</h3>
+        <div class="grid gap-4 lg:h-[26rem] lg:grid-cols-2">
+          <!-- 좌: 달력 -->
+          <div class="flex flex-col">
+            <div class="mb-2 flex items-center justify-between">
+              <button class="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100" @click="shiftMonth(-1)">‹</button>
+              <div class="flex items-center gap-1">
+                <select v-model.number="calYear" class="input w-auto py-1 text-sm" @change="onYm">
+                  <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}년</option>
+                </select>
+                <select v-model.number="calMonth" class="input w-auto py-1 text-sm" @change="onYm">
+                  <option v-for="m in 12" :key="m" :value="m - 1">{{ m }}월</option>
+                </select>
+              </div>
+              <button class="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100" @click="shiftMonth(1)">›</button>
+            </div>
+            <div class="grid grid-cols-7 gap-1 text-center text-[11px] text-slate-400">
+              <div v-for="(w, i) in WEEKDAYS" :key="w" :class="i === 0 ? 'text-rose-400' : i === 6 ? 'text-sky-400' : ''">{{ w }}</div>
+            </div>
+            <div class="mt-1 grid flex-1 auto-rows-fr grid-cols-7 gap-1">
+              <template v-for="(d, i) in calendarCells" :key="i">
+                <div v-if="!d" />
+                <button v-else
+                  class="relative flex h-full min-h-[2.25rem] flex-col items-center justify-center rounded-lg text-sm hover:bg-slate-100"
+                  :class="isSelected(d) ? 'bg-brand-600 text-white hover:bg-brand-600' : isToday(d) ? 'ring-1 ring-brand-300 text-slate-700' : 'text-slate-700'"
+                  @click="pickDay(d)"
+                >
+                  {{ d }}
+                  <span v-if="dayActive(d)" class="absolute bottom-1 h-1 w-1 rounded-full" :class="isSelected(d) ? 'bg-white' : 'bg-brand-500'" />
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <!-- 우: 선택일 입출고 (2줄) -->
+          <div class="flex min-h-0 flex-col">
+            <p class="mb-2 text-sm font-semibold text-slate-700">{{ selectedLabel }} 입출고</p>
+            <div class="space-y-2">
+              <div class="flex items-center gap-3 rounded-lg bg-emerald-50 px-4 py-3">
+                <span class="badge bg-emerald-500 text-white">입고</span>
+                <div class="flex flex-1 items-baseline justify-around">
+                  <span class="text-sm text-emerald-700">건수 <b class="text-lg">{{ selectedStats?.inCount || 0 }}</b></span>
+                  <span class="text-sm text-emerald-700">수량 <b class="text-lg">+{{ selectedStats?.inQty || 0 }}</b></span>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 rounded-lg bg-sky-50 px-4 py-3">
+                <span class="badge bg-sky-500 text-white">출고</span>
+                <div class="flex flex-1 items-baseline justify-around">
+                  <span class="text-sm text-sky-700">건수 <b class="text-lg">{{ selectedStats?.outCount || 0 }}</b></span>
+                  <span class="text-sm text-sky-700">수량 <b class="text-lg">-{{ selectedStats?.outQty || 0 }}</b></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 건별 목록 (상품명 · 담당자) -->
+            <div class="mt-3 flex min-h-0 flex-1 flex-col">
+              <div class="mb-1 flex items-center justify-between text-[11px] font-semibold text-slate-400">
+                <span>입출고 내역 ({{ dayMoves.length }})</span>
+              </div>
+              <div v-if="dayMovesLoading" class="py-6 text-center text-xs text-slate-300">불러오는 중…</div>
+              <div v-else-if="!dayMoves.length" class="py-6 text-center text-xs text-slate-300">이 날짜의 입출고 기록이 없습니다.</div>
+              <div v-else class="min-h-0 flex-1 overflow-y-auto scrollbar-slim">
+                <table class="w-full text-sm">
+                  <thead class="sticky top-0 bg-white text-left text-[11px] text-slate-400">
+                    <tr>
+                      <th class="py-1 pr-2 font-semibold">유형</th>
+                      <th class="py-1 pr-2 font-semibold">상품명</th>
+                      <th class="py-1 pr-2 font-semibold">담당자</th>
+                      <th class="py-1 pr-2 text-right font-semibold">수량</th>
+                      <th class="py-1 text-right font-semibold">시간</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-50">
+                    <tr v-for="m in dayMoves" :key="m.id" :class="m.voided ? 'text-slate-300 line-through' : ''">
+                      <td class="py-1.5 pr-2"><span class="badge text-[10px] text-white" :class="m.type === 'in' ? 'bg-emerald-500' : 'bg-sky-500'">{{ typeLabel[m.type] }}</span></td>
+                      <td class="py-1.5 pr-2"><span class="font-mono text-[11px] text-slate-400">{{ m.skuCode }}</span> <span class="text-slate-700">{{ m.productName }}</span></td>
+                      <td class="py-1.5 pr-2 text-slate-600">{{ m.handler || m.byName || '-' }}</td>
+                      <td class="py-1.5 pr-2 text-right font-semibold" :class="m.type === 'in' ? 'text-emerald-600' : 'text-sky-600'">{{ m.type === 'in' ? '+' : '-' }}{{ m.qty }}</td>
+                      <td class="py-1.5 text-right text-xs text-slate-400">{{ fmtTime(m.at).split(' ')[1] }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -249,7 +414,7 @@ const fmtTime = fmtDateTime
 
         <!-- 최근 입출고 -->
         <div class="card p-5">
-          <h3 class="mb-3 text-sm font-bold text-slate-700">최근 재고 이동</h3>
+          <h3 class="mb-3 text-sm font-bold text-slate-700">최근 재고 보관 위치 이동</h3>
           <div v-if="!moves.length" class="py-6 text-center text-sm text-slate-300">아직 이력이 없습니다.</div>
           <ul v-else class="divide-y divide-slate-50 text-sm">
             <li v-for="m in moves" :key="m.id" class="flex items-center justify-between py-2">
@@ -266,7 +431,7 @@ const fmtTime = fmtDateTime
       <!-- 관리자 통계 (admin 전용) -->
       <div v-if="auth.isAdmin" class="mt-4 grid gap-4 lg:grid-cols-3">
         <div class="card p-5">
-          <h3 class="mb-3 text-sm font-bold text-slate-700">등록 많은 관리자 TOP10</h3>
+          <h3 class="mb-3 text-sm font-bold text-slate-700">등록 많은 관리자 TOP20</h3>
           <div v-if="!topUsers.length" class="py-6 text-center text-sm text-slate-300">데이터 없음</div>
           <ol v-else class="space-y-1.5 text-sm">
             <li v-for="(u, i) in topUsers" :key="i" class="flex items-center justify-between">
@@ -276,7 +441,7 @@ const fmtTime = fmtDateTime
           </ol>
         </div>
         <div class="card p-5">
-          <h3 class="mb-3 text-sm font-bold text-slate-700">SKU 많은 상품 TOP10</h3>
+          <h3 class="mb-3 text-sm font-bold text-slate-700">SKU 많은 상품 TOP20</h3>
           <div v-if="!topProds.length" class="py-6 text-center text-sm text-slate-300">데이터 없음</div>
           <ol v-else class="space-y-1.5 text-sm">
             <li v-for="(p, i) in topProds" :key="i" class="flex items-center justify-between">
@@ -288,10 +453,18 @@ const fmtTime = fmtDateTime
         <div class="card p-5">
           <h3 class="mb-3 text-sm font-bold text-slate-700">변경 많은 SKU TOP10</h3>
           <div v-if="!topSkus.length" class="py-6 text-center text-sm text-slate-300">데이터 없음</div>
-          <ol v-else class="space-y-1.5 text-sm">
-            <li v-for="(s, i) in topSkus" :key="i" class="flex items-center justify-between">
-              <span class="flex min-w-0 items-center gap-2"><span class="w-5 shrink-0 text-right font-bold text-brand-500">{{ i + 1 }}</span> <span class="truncate font-mono text-xs text-slate-700">{{ s.label }}</span></span>
-              <span class="badge shrink-0 bg-amber-50 text-amber-700">{{ s.cnt }}회</span>
+          <ol v-else class="space-y-1 text-sm">
+            <li v-for="(s, i) in topSkus" :key="i">
+              <button class="flex w-full items-center justify-between gap-2 rounded-md px-1 py-1 text-left hover:bg-slate-50" title="상세 보기" @click="openSkuDetail(s.rowId)">
+                <span class="flex min-w-0 items-center gap-2">
+                  <span class="w-5 shrink-0 text-right font-bold text-brand-500">{{ i + 1 }}</span>
+                  <span class="min-w-0">
+                    <span class="block truncate text-slate-700">{{ s.productName || '(상품명 없음)' }}</span>
+                    <span class="block truncate font-mono text-[10px] text-slate-400">{{ s.label }}</span>
+                  </span>
+                </span>
+                <span class="badge shrink-0 bg-amber-50 text-amber-700">{{ s.cnt }}회</span>
+              </button>
             </li>
           </ol>
         </div>
@@ -309,5 +482,30 @@ const fmtTime = fmtDateTime
         </ol>
       </div>
     </template>
+
+    <!-- 변경 많은 SKU 상세 -->
+    <BaseModal v-model="skuModal" title="SKU 상세" size="md">
+      <div v-if="skuLoading" class="py-8 text-center text-sm text-slate-400">불러오는 중…</div>
+      <div v-else-if="!skuDetail" class="py-8 text-center text-sm text-slate-400">정보를 불러올 수 없습니다.</div>
+      <div v-else class="space-y-3">
+        <div class="flex gap-4">
+          <img :src="resolveImage(skuDetail)" class="h-24 w-24 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="" />
+          <div class="min-w-0">
+            <span class="badge bg-brand-50 font-mono text-brand-700">{{ skuDetail.code }}</span>
+            <p class="mt-1 font-bold text-slate-800">{{ skuDetail.productName }}<span v-if="specText(skuDetail)" class="text-slate-400"> · {{ specText(skuDetail) }}</span></p>
+            <p class="mt-0.5 text-xs text-slate-400">{{ skuDetail.pathLabel }}</p>
+          </div>
+        </div>
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+          <div><dt class="text-xs text-slate-400">색상</dt><dd class="text-slate-700">{{ skuDetail.color || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">출시년도</dt><dd class="text-slate-700">{{ skuDetail.releaseYear || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">생산년도</dt><dd class="text-slate-700">{{ skuDetail.productionYear || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">구매목적</dt><dd class="text-slate-700">{{ skuDetail.purpose || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">표준단가</dt><dd class="font-semibold text-slate-800">{{ Number(skuDetail.price || 0).toLocaleString() }}원</dd></div>
+          <div><dt class="text-xs text-slate-400">안전재고</dt><dd class="text-slate-700">{{ skuDetail.safetyStock ?? 0 }}</dd></div>
+        </dl>
+      </div>
+      <template #footer><button class="btn-primary" @click="skuModal = false">닫기</button></template>
+    </BaseModal>
   </div>
 </template>

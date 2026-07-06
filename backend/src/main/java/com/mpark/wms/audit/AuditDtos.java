@@ -8,5 +8,5 @@ public final class AuditDtos {
 
     public record TopProduct(String productId, String productName, long skuCount) {}
 
-    public record TopChanged(String rowId, String label, long cnt) {}
+    public record TopChanged(String rowId, String label, String productName, long cnt) {}
 }

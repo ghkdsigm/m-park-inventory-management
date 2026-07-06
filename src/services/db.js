@@ -205,6 +205,10 @@ export async function recentMovements(max = 100) {
   const rows = await api.get('/movements', { max })
   return (rows || []).map(mapMovement)
 }
+export async function movementsByDate(date, max = 300) {
+  const rows = await api.get('/movements', { date, max })
+  return (rows || []).map(mapMovement)
+}
 
 /** 입출고 취소(역분개) */
 export async function voidMovement(movementId, reason = '') {
@@ -233,6 +237,10 @@ export async function getDailyStats(days = 7) {
 }
 export async function getTodayStats() {
   return mapDaily(await api.get('/daily-stats/today'))
+}
+export async function getDailyStatsRange(from, to) {
+  const rows = await api.get('/daily-stats/range', { from, to })
+  return (rows || []).map(mapDaily)
 }
 
 /* ===================== 감사로그 ===================== */
