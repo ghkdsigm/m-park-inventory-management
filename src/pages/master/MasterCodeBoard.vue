@@ -226,22 +226,22 @@ async function remove(item) {
       <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
       <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">등록된 {{ meta.label }}가 없습니다.</div>
-      <table v-else class="w-full min-w-[560px] text-sm">
+      <table v-else class="w-full min-w-[560px] table-fixed text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
-            <th v-if="chain.length" class="px-4 py-2.5 font-semibold">상위 경로</th>
-            <th class="px-4 py-2.5 font-semibold">코드</th>
-            <th class="px-4 py-2.5 font-semibold">{{ meta.label }}명</th>
-            <th class="px-4 py-2.5 font-semibold">설명</th>
-            <th class="px-4 py-2.5 text-right font-semibold">관리</th>
+            <th v-if="chain.length" class="w-[26%] px-4 py-2.5 font-semibold">상위 경로</th>
+            <th class="w-[16%] px-4 py-2.5 font-semibold">코드</th>
+            <th class="w-[24%] px-4 py-2.5 font-semibold">{{ meta.label }}명</th>
+            <th class="w-[22%] px-4 py-2.5 font-semibold">설명</th>
+            <th class="w-[12%] px-4 py-2.5 text-right font-semibold">관리</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
           <tr v-for="item in paged" :key="item.id" class="hover:bg-slate-50/60">
-            <td v-if="chain.length" class="px-4 py-3 text-xs text-slate-400">{{ item.pathLabel || '—' }}</td>
+            <td v-if="chain.length" class="break-words px-4 py-3 text-xs text-slate-400">{{ item.pathLabel || '—' }}</td>
             <td class="px-4 py-3"><span class="badge bg-brand-50 font-mono text-brand-700">{{ item.code }}</span></td>
-            <td class="px-4 py-3 font-medium text-slate-800">{{ item.name }}</td>
-            <td class="px-4 py-3 text-slate-500">{{ item.description || '—' }}</td>
+            <td class="break-words px-4 py-3 font-medium text-slate-800">{{ item.name }}</td>
+            <td class="break-words px-4 py-3 text-slate-500">{{ item.description || '—' }}</td>
             <td class="px-4 py-3 text-right">
               <button class="btn-ghost btn-sm mr-1" @click="openEdit(item)">수정</button>
               <button class="btn-ghost btn-sm text-rose-600" @click="remove(item)">삭제</button>
