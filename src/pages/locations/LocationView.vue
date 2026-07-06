@@ -4,6 +4,7 @@ import { complexes, zones, subZones } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 const toast = useToast()
@@ -221,7 +222,7 @@ async function removeSub(s) {
         </div>
         <div v-if="selComplex" class="flex gap-1.5 border-b border-slate-100 p-2">
           <input v-model="newZone" class="input" placeholder="구역명 입력 후 +" @keyup.enter="run(addZone)" />
-          <select v-model="newZoneType" class="input w-auto shrink-0 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></select>
+          <AppSelect v-model="newZoneType" class="w-auto shrink-0 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></AppSelect>
           <button class="btn-primary btn-sm shrink-0" :disabled="saving" @click="run(addZone)">＋</button>
         </div>
         <div class="max-h-[55vh] flex-1 overflow-y-auto p-2 scrollbar-slim">
@@ -236,7 +237,7 @@ async function removeSub(s) {
           >
             <template v-if="editZoneId === z.id">
               <input v-model="editZoneName" class="input py-1" @keyup.enter="run(() => saveZone(z))" />
-              <select v-model="editZoneType" class="input w-auto shrink-0 py-1 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></select>
+              <AppSelect v-model="editZoneType" class="w-auto shrink-0 py-1 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></AppSelect>
               <button class="btn-primary btn-sm shrink-0" :disabled="saving" @click="run(() => saveZone(z))">저장</button>
               <button class="btn-ghost btn-sm shrink-0" @click="editZoneId = ''">취소</button>
             </template>
@@ -264,7 +265,7 @@ async function removeSub(s) {
         </div>
         <div v-if="selZone" class="flex gap-1.5 border-b border-slate-100 p-2">
           <input v-model="newSub" class="input" placeholder="상세구역명 입력 후 +" @keyup.enter="run(addSub)" />
-          <select v-model="newSubType" class="input w-auto shrink-0 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></select>
+          <AppSelect v-model="newSubType" class="w-auto shrink-0 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></AppSelect>
           <button class="btn-primary btn-sm shrink-0" :disabled="saving" @click="run(addSub)">＋</button>
         </div>
         <div class="max-h-[55vh] flex-1 overflow-y-auto p-2 scrollbar-slim">
@@ -274,7 +275,7 @@ async function removeSub(s) {
           <div v-for="s in subList" :key="s.id" class="group mb-1 flex items-center gap-1 rounded-lg px-2 py-1.5 hover:bg-slate-50">
             <template v-if="editSubId === s.id">
               <input v-model="editSubName" class="input py-1" @keyup.enter="run(() => saveSub(s))" />
-              <select v-model="editSubType" class="input w-auto shrink-0 py-1 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></select>
+              <AppSelect v-model="editSubType" class="w-auto shrink-0 py-1 text-sm"><option v-for="t in LOC_TYPES" :key="t.v" :value="t.v">{{ t.t }}</option></AppSelect>
               <button class="btn-primary btn-sm shrink-0" :disabled="saving" @click="run(() => saveSub(s))">저장</button>
               <button class="btn-ghost btn-sm shrink-0" @click="editSubId = ''">취소</button>
             </template>

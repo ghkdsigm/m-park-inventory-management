@@ -4,6 +4,7 @@ import { listAuditLogs, users } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import Pager from '@/components/ui/Pager.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { usePagination } from '@/composables/usePagination'
 import { fmtDateTime, fmtDate } from '@/utils/date'
 
@@ -87,17 +88,17 @@ const { paged, page, pageSize, sizes, total, totalPages } = usePagination(logs, 
         <button class="btn-ghost btn-sm" :disabled="date >= todayStr()" @click="shiftDay(1)">▶</button>
         <button class="btn-ghost btn-sm" @click="date = todayStr()">오늘</button>
       </div>
-      <select v-model="fModule" class="input w-auto">
+      <AppSelect v-model="fModule" class="w-auto">
         <option value="">전체 메뉴</option>
         <option v-for="m in MODULES" :key="m" :value="m">{{ m }}</option>
-      </select>
-      <select v-model="fUser" class="input w-auto">
+      </AppSelect>
+      <AppSelect v-model="fUser" class="w-auto">
         <option value="">전체 관리자</option>
         <option v-for="u in userList" :key="u.id" :value="u.id">{{ u.displayName }}</option>
-      </select>
-      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+      </AppSelect>
+      <AppSelect v-model="pageSize" class="w-auto sm:ml-auto">
         <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
-      </select>
+      </AppSelect>
     </div>
 
     <p class="mb-2 text-xs text-slate-400">

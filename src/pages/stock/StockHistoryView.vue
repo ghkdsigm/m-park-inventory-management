@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { skus, complexes, listMovements, listLocationLogs } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import Pager from '@/components/ui/Pager.vue'
 import { resolveImage } from '@/utils/image'
 import { fmtDateTime } from '@/utils/date'
@@ -145,31 +146,31 @@ function exportCsv() {
       <!-- 좌: SKU 리스트 (SKU 단위·최근 변경순) -->
       <div class="card flex flex-col lg:col-span-2">
         <div class="flex flex-wrap items-center gap-1.5 border-b border-slate-100 p-3">
-          <select v-model="fComplex" class="input w-auto text-sm">
+          <AppSelect v-model="fComplex" class="w-auto text-sm">
             <option value="">전체 단지</option>
             <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-          <select v-model="fColor" class="input w-auto text-sm">
+          </AppSelect>
+          <AppSelect v-model="fColor" class="w-auto text-sm">
             <option value="">전체 색상</option>
             <option v-for="c in colorOptions" :key="c" :value="c">{{ c }}</option>
-          </select>
-          <select v-model="fRelease" class="input w-auto text-sm">
+          </AppSelect>
+          <AppSelect v-model="fRelease" class="w-auto text-sm">
             <option value="">출시년도</option>
             <option v-for="y in releaseYearOptions" :key="y" :value="String(y)">{{ y }}</option>
-          </select>
-          <select v-model="fProduction" class="input w-auto text-sm">
+          </AppSelect>
+          <AppSelect v-model="fProduction" class="w-auto text-sm">
             <option value="">생산년도</option>
             <option v-for="y in productionYearOptions" :key="y" :value="String(y)">{{ y }}</option>
-          </select>
+          </AppSelect>
           <div class="flex items-center gap-1">
             <input v-model="priceMin" type="number" min="0" class="input w-20 text-sm" placeholder="단가↓" />
             <span class="text-slate-400">~</span>
             <input v-model="priceMax" type="number" min="0" class="input w-20 text-sm" placeholder="↑" />
           </div>
           <input v-model="search" class="input w-full text-sm" placeholder="SKU코드/상품명 검색" />
-          <select v-model="pageSize" class="input w-auto text-sm sm:ml-auto">
+          <AppSelect v-model="pageSize" class="w-auto text-sm sm:ml-auto">
             <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
-          </select>
+          </AppSelect>
         </div>
         <div class="max-h-[68vh] flex-1 overflow-y-auto scrollbar-slim">
           <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>

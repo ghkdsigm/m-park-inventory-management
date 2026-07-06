@@ -6,6 +6,7 @@ import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
 import { usePagination } from '@/composables/usePagination'
 import Pager from '@/components/ui/Pager.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -272,13 +273,13 @@ async function printSelected() {
     </PageHeader>
 
     <div class="no-print mb-3 flex flex-wrap items-center gap-2">
-      <select v-model="fCategory" class="input w-auto"><option value="">전체 카테고리</option><option v-for="c in categoryList" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-      <select v-model="fProductCode" class="input w-auto"><option value="">전체 제품코드</option><option v-for="p in pcFilterOptions" :key="p.id" :value="p.id">{{ p.name }}</option></select>
-      <select v-model="fProductDetail" class="input w-auto"><option value="">전체 상세코드</option><option v-for="d in pdFilterOptions" :key="d.id" :value="d.id">{{ d.name }}</option></select>
-      <select v-model="fProduct" class="input w-auto"><option value="">전체 상품</option><option v-for="p in productFilterOptions" :key="p.id" :value="p.id">{{ p.name }} ({{ p.code }})</option></select>
-      <select v-model="fColor" class="input w-auto"><option value="">전체 색상</option><option v-for="c in colorOptions" :key="c" :value="c">{{ c }}</option></select>
-      <select v-model="fRelease" class="input w-auto"><option value="">출시년도</option><option v-for="y in releaseYearOptions" :key="y" :value="String(y)">{{ y }}</option></select>
-      <select v-model="fProduction" class="input w-auto"><option value="">생산년도</option><option v-for="y in productionYearOptions" :key="y" :value="String(y)">{{ y }}</option></select>
+      <AppSelect v-model="fCategory" class="w-auto"><option value="">전체 카테고리</option><option v-for="c in categoryList" :key="c.id" :value="c.id">{{ c.name }}</option></AppSelect>
+      <AppSelect v-model="fProductCode" class="w-auto"><option value="">전체 제품코드</option><option v-for="p in pcFilterOptions" :key="p.id" :value="p.id">{{ p.name }}</option></AppSelect>
+      <AppSelect v-model="fProductDetail" class="w-auto"><option value="">전체 상세코드</option><option v-for="d in pdFilterOptions" :key="d.id" :value="d.id">{{ d.name }}</option></AppSelect>
+      <AppSelect v-model="fProduct" class="w-auto"><option value="">전체 상품</option><option v-for="p in productFilterOptions" :key="p.id" :value="p.id">{{ p.name }} ({{ p.code }})</option></AppSelect>
+      <AppSelect v-model="fColor" class="w-auto"><option value="">전체 색상</option><option v-for="c in colorOptions" :key="c" :value="c">{{ c }}</option></AppSelect>
+      <AppSelect v-model="fRelease" class="w-auto"><option value="">출시년도</option><option v-for="y in releaseYearOptions" :key="y" :value="String(y)">{{ y }}</option></AppSelect>
+      <AppSelect v-model="fProduction" class="w-auto"><option value="">생산년도</option><option v-for="y in productionYearOptions" :key="y" :value="String(y)">{{ y }}</option></AppSelect>
       <div class="flex items-center gap-1">
         <input v-model="priceMin" type="number" min="0" class="input w-24" placeholder="단가 최소" />
         <span class="text-slate-400">~</span>
@@ -286,7 +287,7 @@ async function printSelected() {
       </div>
       <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드 / 상품명 / 규격 / 색상 / 목적 검색" />
       <button class="btn-ghost btn-sm" @click="resetFilters">초기화</button>
-      <select v-model="pageSize" class="input w-auto sm:ml-auto"><option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option></select>
+      <AppSelect v-model="pageSize" class="w-auto sm:ml-auto"><option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option></AppSelect>
     </div>
 
     <div class="card no-print">
@@ -357,25 +358,25 @@ async function printSelected() {
     <BaseModal v-model="modal" :title="editing ? 'SKU 수정' : 'SKU 추가'">
       <div class="space-y-3">
         <div v-if="!editing" class="grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-2">
-          <select v-model="psel.categoryId" class="input text-sm" @change="onPselCategory">
+          <AppSelect v-model="psel.categoryId" class="text-sm w-full" @change="onPselCategory">
             <option value="">전체 카테고리</option>
             <option v-for="c in pCategoryOptions" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-          <select v-model="psel.productCodeId" class="input text-sm" :disabled="!psel.categoryId" @change="onPselCode">
+          </AppSelect>
+          <AppSelect v-model="psel.productCodeId" class="text-sm w-full" :disabled="!psel.categoryId" @change="onPselCode">
             <option value="">전체 제품코드</option>
             <option v-for="p in pCodeOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
-          <select v-model="psel.productDetailId" class="input text-sm" :disabled="!psel.productCodeId" @change="clearInvalidProduct">
+          </AppSelect>
+          <AppSelect v-model="psel.productDetailId" class="text-sm w-full" :disabled="!psel.productCodeId" @change="clearInvalidProduct">
             <option value="">전체 상세코드(선택)</option>
             <option v-for="d in pDetailOptions" :key="d.id" :value="d.id">{{ d.name }}</option>
-          </select>
+          </AppSelect>
         </div>
         <div>
           <label class="label">상품 * <span class="text-slate-400">({{ filteredProducts.length }}건)</span></label>
-          <select v-model="form.productId" class="input" :disabled="!!editing">
+          <AppSelect v-model="form.productId" class="w-full" :disabled="!!editing">
             <option value="">상품 선택</option>
             <option v-for="p in (editing ? productList : filteredProducts)" :key="p.id" :value="p.id">{{ p.name }} ({{ p.code }}{{ p.pathLabel ? ' · ' + p.pathLabel : '' }})</option>
-          </select>
+          </AppSelect>
         </div>
         <div>
           <label class="label">SKU 코드</label>
@@ -402,10 +403,10 @@ async function printSelected() {
           <div><label class="label">생산년도</label><input v-model="form.productionYear" type="number" min="1900" max="2999" class="input" placeholder="예: 2024" /></div>
           <div>
             <label class="label">구매목적</label>
-            <select v-model="form.purposeSel" class="input" @change="onPurposeSel">
+            <AppSelect v-model="form.purposeSel" class="w-full" @change="onPurposeSel">
               <option value="">선택</option>
               <option v-for="p in PURPOSES" :key="p" :value="p">{{ p }}</option>
-            </select>
+            </AppSelect>
           </div>
           <div v-if="form.purposeSel === '기타'" class="col-span-2"><label class="label">구매목적 직접 입력</label><input v-model="form.purpose" class="input" /></div>
           <div><label class="label">표준단가(원)</label><input v-model="priceDisplay" inputmode="numeric" class="input" placeholder="0" /></div>
@@ -426,7 +427,7 @@ async function printSelected() {
               <label class="label">교체주기</label>
               <div class="flex gap-2">
                 <input v-model.number="form.cycleValue" type="number" min="0" class="input" />
-                <select v-model="form.cycleUnit" class="input w-24"><option v-for="u in CYCLE_UNITS" :key="u.v" :value="u.v">{{ u.t }}</option></select>
+                <AppSelect v-model="form.cycleUnit" class="w-24"><option v-for="u in CYCLE_UNITS" :key="u.v" :value="u.v">{{ u.t }}</option></AppSelect>
               </div>
             </div>
             <div><label class="label">교체 사유/유형</label><input v-model="form.replaceReason" class="input" placeholder="예: 법정점검 / 마모 / 위생" /></div>

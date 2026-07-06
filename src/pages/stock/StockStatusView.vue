@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { skus, complexes, categories, productCodes, productDetails, listLocationLogs, listMovements } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import Pager from '@/components/ui/Pager.vue'
 import { resolveImage } from '@/utils/image'
@@ -221,19 +222,19 @@ function resetFilters() {
 
     <!-- 필터 -->
     <div class="mb-3 flex flex-wrap items-center gap-2">
-      <select v-model="fComplex" class="input w-auto"><option value="">전체 단지</option><option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-      <select v-model="fCategory" class="input w-auto"><option value="">전체 카테고리</option><option v-for="c in categoryOptions" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-      <select v-model="fProductCode" class="input w-auto"><option value="">전체 제품코드</option><option v-for="p in productCodeOptions" :key="p.id" :value="p.id">{{ p.name }}</option></select>
-      <select v-model="fProductDetail" class="input w-auto"><option value="">전체 상세코드</option><option v-for="d in productDetailOptions" :key="d.id" :value="d.id">{{ d.name }}</option></select>
-      <select v-model="fStatus" class="input w-auto"><option v-for="s in STATUS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
-      <select v-model="fAudit" class="input w-auto"><option v-for="a in AUDIT_STATUS" :key="a.v" :value="a.v">{{ a.t }}</option></select>
-      <select v-if="!groupByComplex" v-model="sort" class="input w-auto"><option v-for="s in SORTS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+      <AppSelect v-model="fComplex" class="w-auto"><option value="">전체 단지</option><option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option></AppSelect>
+      <AppSelect v-model="fCategory" class="w-auto"><option value="">전체 카테고리</option><option v-for="c in categoryOptions" :key="c.id" :value="c.id">{{ c.name }}</option></AppSelect>
+      <AppSelect v-model="fProductCode" class="w-auto"><option value="">전체 제품코드</option><option v-for="p in productCodeOptions" :key="p.id" :value="p.id">{{ p.name }}</option></AppSelect>
+      <AppSelect v-model="fProductDetail" class="w-auto"><option value="">전체 상세코드</option><option v-for="d in productDetailOptions" :key="d.id" :value="d.id">{{ d.name }}</option></AppSelect>
+      <AppSelect v-model="fStatus" class="w-auto"><option v-for="s in STATUS" :key="s.v" :value="s.v">{{ s.t }}</option></AppSelect>
+      <AppSelect v-model="fAudit" class="w-auto"><option v-for="a in AUDIT_STATUS" :key="a.v" :value="a.v">{{ a.t }}</option></AppSelect>
+      <AppSelect v-if="!groupByComplex" v-model="sort" class="w-auto"><option v-for="s in SORTS" :key="s.v" :value="s.v">{{ s.t }}</option></AppSelect>
       <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명 검색" />
       <button v-if="!groupByComplex" class="btn-ghost btn-sm" :class="showTotal ? 'bg-brand-50 text-brand-700 ring-brand-300' : ''" @click="showTotal = !showTotal">합계 보기</button>
       <button class="btn-ghost btn-sm" @click="resetFilters">초기화</button>
-      <select v-if="!groupByComplex" v-model="pageSize" class="input w-auto sm:ml-auto">
+      <AppSelect v-if="!groupByComplex" v-model="pageSize" class="w-auto sm:ml-auto">
         <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
-      </select>
+      </AppSelect>
     </div>
 
     <!-- 단지별 묶기: 요약 -->

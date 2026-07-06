@@ -6,6 +6,7 @@ import { setAutoLogin, getAutoLogin } from '@/supabase'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import { resolveImage } from '@/utils/image'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
@@ -361,21 +362,21 @@ const fmtTime = fmtDateTime
         <!-- 입고: 위치 필수 -->
         <div v-else-if="mode === 'in'" class="card p-4">
           <div class="mb-3 flex items-center justify-between"><p class="text-sm font-semibold text-emerald-700">입고 (위치 필수)</p><button class="btn-ghost btn-sm" @click="mode = ''">↺ 재선택</button></div>
-          <select v-model="inComplex" class="input mb-2" @change="onInComplex">
+          <AppSelect v-model="inComplex" class="mb-2 w-full" @change="onInComplex">
             <option value="">단지 선택</option>
             <option v-for="c in complexChoices" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
+          </AppSelect>
           <div class="grid grid-cols-2 gap-2">
-            <select v-model="inZone" class="input" :disabled="!inComplex" @change="onInZone"><option value="">구역 전체</option><option v-for="z in zoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option></select>
-            <select v-model="inSub" class="input" :disabled="!inZone"><option value="">상세구역 전체</option><option v-for="s in subChoices" :key="s.id" :value="s.id">{{ s.name }}</option></select>
+            <AppSelect v-model="inZone" class="w-full" :disabled="!inComplex" @change="onInZone"><option value="">구역 전체</option><option v-for="z in zoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option></AppSelect>
+            <AppSelect v-model="inSub" class="w-full" :disabled="!inZone"><option value="">상세구역 전체</option><option v-for="s in subChoices" :key="s.id" :value="s.id">{{ s.name }}</option></AppSelect>
           </div>
-          <select v-model="inLoc" class="input mt-2"><option value="">보관위치 선택 *</option><option v-for="l in locOptions" :key="l.id" :value="l.id">{{ l.code }} · {{ [l.zoneName, l.subZoneName, l.name].filter(Boolean).join(' › ') || '단지 전체' }}</option></select>
+          <AppSelect v-model="inLoc" class="mt-2 w-full"><option value="">보관위치 선택 *</option><option v-for="l in locOptions" :key="l.id" :value="l.id">{{ l.code }} · {{ [l.zoneName, l.subZoneName, l.name].filter(Boolean).join(' › ') || '단지 전체' }}</option></AppSelect>
           <div class="mt-3 flex items-stretch gap-2">
             <button class="btn-ghost h-14 w-20 shrink-0 text-3xl" @click="inQty = Math.max(1, inQty - 1)">－</button>
             <input v-model.number="inQty" type="number" min="1" class="input h-14 flex-1 text-center text-2xl font-bold" />
             <button class="btn-ghost h-14 w-20 shrink-0 text-3xl" @click="inQty++">＋</button>
           </div>
-          <select v-model="inReason" class="input mt-3"><option value="">사유 / 구분 선택 *</option><option v-for="r in IN_REASONS" :key="r" :value="r">{{ r }}</option></select>
+          <AppSelect v-model="inReason" class="mt-3 w-full"><option value="">사유 / 구분 선택 *</option><option v-for="r in IN_REASONS" :key="r" :value="r">{{ r }}</option></AppSelect>
           <input v-if="inReason === '기타'" v-model="inMemo" class="input mt-2" placeholder="상세 사유" />
           <button class="btn mt-3 w-full bg-emerald-600 py-3 text-white hover:bg-emerald-700" :disabled="working" @click="doInbound">입고 +{{ inQty }}</button>
         </div>
@@ -391,7 +392,7 @@ const fmtTime = fmtDateTime
               <input v-model.number="outQty" type="number" min="1" class="input h-14 flex-1 text-center text-2xl font-bold" />
               <button class="btn-ghost h-14 w-20 shrink-0 text-3xl" @click="outQty++">＋</button>
             </div>
-            <select v-model="outReason" class="input mt-3" @change="onOutReason"><option value="">사유 / 구분 선택 *</option><option v-for="r in OUT_REASONS" :key="r" :value="r">{{ r }}</option></select>
+            <AppSelect v-model="outReason" class="mt-3 w-full" @change="onOutReason"><option value="">사유 / 구분 선택 *</option><option v-for="r in OUT_REASONS" :key="r" :value="r">{{ r }}</option></AppSelect>
             <input v-if="outReason === '기타'" v-model="outMemo" class="input mt-2" placeholder="상세 사유" />
 
             <!-- 출고 상세 -->
@@ -399,10 +400,10 @@ const fmtTime = fmtDateTime
               <p class="text-xs font-semibold text-slate-500">출고 상세</p>
               <div v-if="showUsage">
                 <label class="label">사용처 <span class="font-normal text-slate-400">(사용처/공용)</span></label>
-                <select v-model="outComplex" class="input" @change="onOutComplex"><option value="">단지 선택</option><option v-for="c in outComplexChoices" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+                <AppSelect v-model="outComplex" class="w-full" @change="onOutComplex"><option value="">단지 선택</option><option v-for="c in outComplexChoices" :key="c.id" :value="c.id">{{ c.name }}</option></AppSelect>
                 <div class="mt-2 grid grid-cols-2 gap-2">
-                  <select v-model="outZone" class="input" :disabled="!outComplex" @change="onOutZone"><option value="">구역 선택</option><option v-for="z in outZoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option></select>
-                  <select v-model="outSub" class="input" :disabled="!outZone"><option value="">상세구역(선택)</option><option v-for="sz in outSubChoices" :key="sz.id" :value="sz.id">{{ sz.name }}</option></select>
+                  <AppSelect v-model="outZone" class="w-full" :disabled="!outComplex" @change="onOutZone"><option value="">구역 선택</option><option v-for="z in outZoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option></AppSelect>
+                  <AppSelect v-model="outSub" class="w-full" :disabled="!outZone"><option value="">상세구역(선택)</option><option v-for="sz in outSubChoices" :key="sz.id" :value="sz.id">{{ sz.name }}</option></AppSelect>
                 </div>
                 <p v-if="outComplex && !outZoneChoices.length" class="mt-1 text-[11px] text-amber-600">사용처/공용 구역이 없습니다. 위치코드관리에서 지정하세요.</p>
               </div>
@@ -424,7 +425,7 @@ const fmtTime = fmtDateTime
         <p class="mb-2 text-sm font-semibold text-slate-700">재고조정 / 실사 <span class="badge bg-slate-100 text-[10px] text-slate-400">관리자</span></p>
         <p class="mb-2 text-xs text-slate-500">대상: <b>{{ selectedStock.complexName }}<span v-if="selectedStock.locationLabel"> › {{ selectedStock.locationLabel }}</span></b> (현재 {{ selectedStock.qty }}개)</p>
         <div class="flex items-center gap-2"><span class="text-sm text-slate-400">목표 수량</span><input v-model.number="setQty" type="number" min="0" class="input w-24 text-center" /></div>
-        <select v-model="adjReason" class="input mt-3"><option value="">사유 / 구분 선택 *</option><option v-for="r in ADJUST_REASONS" :key="r" :value="r">{{ r }}</option></select>
+        <AppSelect v-model="adjReason" class="mt-3 w-full"><option value="">사유 / 구분 선택 *</option><option v-for="r in ADJUST_REASONS" :key="r" :value="r">{{ r }}</option></AppSelect>
         <input v-if="adjReason === '기타'" v-model="adjMemo" class="input mt-2" placeholder="상세 사유" />
         <div class="mt-3 grid grid-cols-2 gap-2">
           <button class="btn bg-amber-500 py-3 text-white hover:bg-amber-600" :disabled="working" @click="doAdjust('adjust', '재고조정')">조정 = {{ setQty }}</button>
@@ -475,7 +476,7 @@ const fmtTime = fmtDateTime
           <p><span class="badge bg-slate-100 text-[10px]">{{ typeLabel[voidTarget.type] }}</span> <b>{{ voidTarget.qty }}개</b> · {{ voidTarget.skuCode }}</p>
           <p class="mt-1 text-xs text-slate-500">{{ voidTarget.before }}→{{ voidTarget.after }}개 · {{ fmtTime(voidTarget.at) }}</p>
         </div>
-        <select v-model="voidReason" class="input"><option value="">취소 사유 선택 *</option><option v-for="r in VOID_REASONS" :key="r" :value="r">{{ r }}</option></select>
+        <AppSelect v-model="voidReason" class="w-full"><option value="">취소 사유 선택 *</option><option v-for="r in VOID_REASONS" :key="r" :value="r">{{ r }}</option></AppSelect>
         <input v-if="voidReason === '기타'" v-model="voidMemo" class="input" placeholder="상세 사유" />
       </div>
       <template #footer>

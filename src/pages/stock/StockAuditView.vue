@@ -4,6 +4,7 @@ import { skus, complexes, categories, productCodes, productDetails, applyAuditBa
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import Pager from '@/components/ui/Pager.vue'
@@ -247,17 +248,17 @@ async function doResolve() {
 
     <!-- 필터 -->
     <div class="mb-3 flex flex-wrap items-center gap-2">
-      <select v-model="fComplex" class="input w-auto"><option value="">전체 단지</option><option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-      <select v-model="fCategory" class="input w-auto"><option value="">전체 카테고리</option><option v-for="c in categoryOptions" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-      <select v-model="fProductCode" class="input w-auto"><option value="">전체 제품코드</option><option v-for="p in pcOptions" :key="p.id" :value="p.id">{{ p.name }}</option></select>
-      <select v-model="fProductDetail" class="input w-auto"><option value="">전체 상세코드</option><option v-for="d in pdOptions" :key="d.id" :value="d.id">{{ d.name }}</option></select>
-      <select v-model="fAudit" class="input w-auto"><option v-for="a in AUDIT_STATUS" :key="a.v" :value="a.v">{{ a.t }}</option></select>
+      <AppSelect v-model="fComplex" class="w-auto"><option value="">전체 단지</option><option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option></AppSelect>
+      <AppSelect v-model="fCategory" class="w-auto"><option value="">전체 카테고리</option><option v-for="c in categoryOptions" :key="c.id" :value="c.id">{{ c.name }}</option></AppSelect>
+      <AppSelect v-model="fProductCode" class="w-auto"><option value="">전체 제품코드</option><option v-for="p in pcOptions" :key="p.id" :value="p.id">{{ p.name }}</option></AppSelect>
+      <AppSelect v-model="fProductDetail" class="w-auto"><option value="">전체 상세코드</option><option v-for="d in pdOptions" :key="d.id" :value="d.id">{{ d.name }}</option></AppSelect>
+      <AppSelect v-model="fAudit" class="w-auto"><option v-for="a in AUDIT_STATUS" :key="a.v" :value="a.v">{{ a.t }}</option></AppSelect>
       <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명 검색" />
       <label class="flex items-center gap-1.5 text-sm text-slate-500"><input v-model="onlyDiff" type="checkbox" class="rounded border-slate-300" /> 차이만</label>
       <input v-model="memo" class="input w-auto sm:max-w-[200px]" placeholder="실사 메모 (예: 2026-06 정기실사)" />
-      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+      <AppSelect v-model="pageSize" class="w-auto sm:ml-auto">
         <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
-      </select>
+      </AppSelect>
     </div>
 
     <div class="card">

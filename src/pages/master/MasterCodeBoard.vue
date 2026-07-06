@@ -6,6 +6,7 @@ import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
 import { usePagination } from '@/composables/usePagination'
 import Pager from '@/components/ui/Pager.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -206,16 +207,16 @@ async function remove(item) {
 <template>
   <div>
     <PageHeader :title="meta.label + '관리'" :subtitle="meta.sub">
-      <select v-model="pageSize" class="input w-auto"><option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option></select>
+      <AppSelect v-model="pageSize" class="w-auto"><option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option></AppSelect>
       <button class="btn-primary" @click="openCreate">+ {{ meta.label }} 추가</button>
     </PageHeader>
 
     <!-- 상위 단계 필터 -->
     <div v-if="chain.length" class="no-print mb-3 flex flex-wrap items-center gap-2">
-      <select v-for="(c, i) in chain" :key="c" v-model="filterSel[c]" class="input w-auto">
+      <AppSelect v-for="(c, i) in chain" :key="c" v-model="filterSel[c]" class="w-auto">
         <option value="">전체 {{ META[c].label }}</option>
         <option v-for="o in optionsFor(c, filterSel, i)" :key="o.id" :value="o.id">{{ o.name }}</option>
-      </select>
+      </AppSelect>
     </div>
 
     <div class="card">
@@ -253,10 +254,10 @@ async function remove(item) {
       <div class="space-y-3">
         <div v-for="(c, i) in chain" :key="c">
           <label class="label">상위 {{ META[c].label }} *</label>
-          <select v-model="form.sel[c]" class="input">
+          <AppSelect v-model="form.sel[c]" class="w-full">
             <option value="">선택하세요</option>
             <option v-for="o in formOptions(c, i)" :key="o.id" :value="o.id">{{ o.name }} ({{ o.code }})</option>
-          </select>
+          </AppSelect>
         </div>
         <div v-if="!isAuto">
           <label class="label">{{ meta.label }} 코드 *</label>

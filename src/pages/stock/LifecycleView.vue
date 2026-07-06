@@ -6,6 +6,7 @@ import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime, CYCLE_UNITS } from '@/utils/date'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import Pager from '@/components/ui/Pager.vue'
 import { usePagination } from '@/composables/usePagination'
@@ -127,12 +128,12 @@ async function openHistory(s) {
     </div>
 
     <div class="mb-3 flex flex-wrap items-center gap-2">
-      <select v-model="fComplex" class="input w-auto"><option value="">전체 단지</option><option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-      <select v-model="fStatus" class="input w-auto"><option v-for="s in STATUS" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+      <AppSelect v-model="fComplex" class="w-auto"><option value="">전체 단지</option><option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option></AppSelect>
+      <AppSelect v-model="fStatus" class="w-auto"><option v-for="s in STATUS" :key="s.v" :value="s.v">{{ s.t }}</option></AppSelect>
       <input v-model="search" class="input w-full sm:w-64" placeholder="SKU코드/상품명/사유 검색" />
-      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+      <AppSelect v-model="pageSize" class="w-auto sm:ml-auto">
         <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
-      </select>
+      </AppSelect>
     </div>
 
     <div class="card">

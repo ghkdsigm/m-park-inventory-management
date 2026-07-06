@@ -4,6 +4,7 @@ import { skus, complexes, storageLocations, transferStock } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import Pager from '@/components/ui/Pager.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { resolveImage } from '@/utils/image'
@@ -119,14 +120,14 @@ async function submit() {
       <!-- 출발 재고행 -->
       <div class="card lg:col-span-3">
         <div class="flex flex-wrap items-center gap-2 border-b border-slate-100 p-3">
-          <select v-model="filterComplex" class="input w-auto">
+          <AppSelect v-model="filterComplex" class="w-auto">
             <option value="">전체 단지</option>
             <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
+          </AppSelect>
           <input v-model="search" class="input w-full flex-1 sm:w-auto" placeholder="SKU코드 / 상품명 검색" />
-          <select v-model="pageSize" class="input w-auto sm:ml-auto">
+          <AppSelect v-model="pageSize" class="w-auto sm:ml-auto">
             <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
-          </select>
+          </AppSelect>
         </div>
         <div class="max-h-[60vh] overflow-y-auto scrollbar-slim">
           <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
@@ -168,24 +169,24 @@ async function submit() {
 
             <div class="mb-3 rounded-lg border border-slate-200 p-3">
               <p class="mb-2 text-xs font-semibold text-slate-500">도착 보관위치 <span class="text-rose-500">*</span></p>
-              <select v-model="toComplex" class="input mb-2">
+              <AppSelect v-model="toComplex" class="mb-2 w-full">
                 <option value="">단지 선택</option>
                 <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
-              </select>
+              </AppSelect>
               <div class="grid grid-cols-2 gap-2">
-                <select v-model="toZone" class="input" :disabled="!toComplex">
+                <AppSelect v-model="toZone" class="w-full" :disabled="!toComplex">
                   <option value="">구역 전체</option>
                   <option v-for="z in zoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option>
-                </select>
-                <select v-model="toSub" class="input" :disabled="!toZone">
+                </AppSelect>
+                <AppSelect v-model="toSub" class="w-full" :disabled="!toZone">
                   <option value="">상세구역 전체</option>
                   <option v-for="sz in subChoices" :key="sz.id" :value="sz.id">{{ sz.name }}</option>
-                </select>
+                </AppSelect>
               </div>
-              <select v-model="toLoc" class="input mt-2">
+              <AppSelect v-model="toLoc" class="mt-2 w-full">
                 <option value="">보관위치 선택</option>
                 <option v-for="l in locOptions" :key="l.id" :value="l.id">{{ l.code }} · {{ [l.zoneName, l.subZoneName, l.name].filter(Boolean).join(' › ') || '단지 전체' }}</option>
-              </select>
+              </AppSelect>
               <p v-if="toComplex && !locForComplex.length" class="mt-1 text-[11px] text-amber-600">이 단지에 보관위치가 없습니다.</p>
             </div>
 
@@ -194,10 +195,10 @@ async function submit() {
 
             <div class="mb-3">
               <label class="label">사유 / 구분 *</label>
-              <select v-model="reason" class="input">
+              <AppSelect v-model="reason" class="w-full">
                 <option value="">사유 선택</option>
                 <option v-for="r in REASONS" :key="r" :value="r">{{ r }}</option>
-              </select>
+              </AppSelect>
             </div>
             <div v-if="reason === '기타'" class="mb-4">
               <label class="label">상세 사유</label>

@@ -8,6 +8,7 @@ import Pager from '@/components/ui/Pager.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 
 const toast = useToast()
 const { busy: saving, run } = useBusy()
@@ -143,22 +144,22 @@ async function remove(l) {
     </PageHeader>
 
     <div class="no-print mb-3 flex flex-wrap items-center gap-2">
-      <select v-model="filterComplex" class="input w-auto">
+      <AppSelect v-model="filterComplex" class="w-auto">
         <option value="">전체 단지</option>
         <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
-      </select>
-      <select v-model="fZone" class="input w-auto" :disabled="!filterComplex">
+      </AppSelect>
+      <AppSelect v-model="fZone" class="w-auto" :disabled="!filterComplex">
         <option value="">전체 구역</option>
         <option v-for="z in zoneFilterOptions" :key="z.id" :value="z.id">{{ z.name }}</option>
-      </select>
-      <select v-model="fSub" class="input w-auto" :disabled="!fZone">
+      </AppSelect>
+      <AppSelect v-model="fSub" class="w-auto" :disabled="!fZone">
         <option value="">전체 상세구역</option>
         <option v-for="s in subFilterOptions" :key="s.id" :value="s.id">{{ s.name }}</option>
-      </select>
+      </AppSelect>
       <input v-model="search" class="input w-full sm:w-64" placeholder="코드/위치명 검색" />
-      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+      <AppSelect v-model="pageSize" class="w-auto sm:ml-auto">
         <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
-      </select>
+      </AppSelect>
     </div>
 
     <div class="card">
@@ -199,24 +200,24 @@ async function remove(l) {
         </div>
         <div>
           <label class="label">단지 <span class="text-rose-500">*</span></label>
-          <select v-model="form.complexId" class="input" @change="onFormComplexChange">
+          <AppSelect v-model="form.complexId" class="w-full" @change="onFormComplexChange">
             <option value="">단지 선택</option>
             <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
+          </AppSelect>
         </div>
         <div>
           <label class="label">구역 <span class="text-slate-300">(선택)</span></label>
-          <select v-model="form.zoneId" class="input" :disabled="!form.complexId" @change="onFormZoneChange">
+          <AppSelect v-model="form.zoneId" class="w-full" :disabled="!form.complexId" @change="onFormZoneChange">
             <option value="">선택 안 함</option>
             <option v-for="z in formZones" :key="z.id" :value="z.id">{{ z.name }}</option>
-          </select>
+          </AppSelect>
         </div>
         <div>
           <label class="label">상세구역 <span class="text-slate-300">(선택)</span></label>
-          <select v-model="form.subZoneId" class="input" :disabled="!form.zoneId">
+          <AppSelect v-model="form.subZoneId" class="w-full" :disabled="!form.zoneId">
             <option value="">선택 안 함</option>
             <option v-for="s in formSubs" :key="s.id" :value="s.id">{{ s.name }}</option>
-          </select>
+          </AppSelect>
         </div>
         <div>
           <label class="label">위치 명칭 <span class="text-slate-300">(선택, 예: 3번 선반/팔레트A)</span></label>

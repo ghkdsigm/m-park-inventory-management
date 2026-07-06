@@ -8,6 +8,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import Pager from '@/components/ui/Pager.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { resolveImage } from '@/utils/image'
@@ -258,22 +259,22 @@ async function confirmVoid() {
       <!-- 선택 목록 -->
       <div class="card lg:col-span-3">
         <div class="flex flex-wrap items-center gap-2 border-b border-slate-100 p-3">
-          <select v-if="!isInbound" v-model="filterComplex" class="input w-auto">
+          <AppSelect v-if="!isInbound" v-model="filterComplex" class="w-auto">
             <option value="">전체 단지</option>
             <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-          <select v-model="fCategory" class="input w-auto">
+          </AppSelect>
+          <AppSelect v-model="fCategory" class="w-auto">
             <option value="">전체 카테고리</option>
             <option v-for="c in categoryList" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-          <select v-model="fProductCode" class="input w-auto">
+          </AppSelect>
+          <AppSelect v-model="fProductCode" class="w-auto">
             <option value="">전체 제품코드</option>
             <option v-for="p in pcOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
+          </AppSelect>
           <input v-model="search" class="input w-full flex-1 sm:w-auto" placeholder="SKU코드/상품명 검색" />
-          <select v-if="!isInbound" v-model="pageSize" class="input w-auto sm:ml-auto">
+          <AppSelect v-if="!isInbound" v-model="pageSize" class="w-auto sm:ml-auto">
             <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
-          </select>
+          </AppSelect>
         </div>
         <div class="max-h-[60vh] overflow-y-auto scrollbar-slim">
           <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
@@ -330,24 +331,24 @@ async function confirmVoid() {
             <!-- 입고: 보관위치(필수) -->
             <div v-if="isInbound" class="my-3 rounded-lg border border-slate-200 p-3">
               <p class="mb-2 text-xs font-semibold text-slate-500">보관위치 <span class="text-rose-500">*</span> <span class="font-normal text-slate-400">(입고는 위치 필수)</span></p>
-              <select v-model="inComplex" class="input mb-2">
+              <AppSelect v-model="inComplex" class="mb-2 w-full">
                 <option value="">단지 선택</option>
                 <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
-              </select>
+              </AppSelect>
               <div class="grid grid-cols-2 gap-2">
-                <select v-model="inZone" class="input" :disabled="!inComplex">
+                <AppSelect v-model="inZone" class="w-full" :disabled="!inComplex">
                   <option value="">구역 전체</option>
                   <option v-for="z in zoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option>
-                </select>
-                <select v-model="inSub" class="input" :disabled="!inZone">
+                </AppSelect>
+                <AppSelect v-model="inSub" class="w-full" :disabled="!inZone">
                   <option value="">상세구역 전체</option>
                   <option v-for="sz in subChoices" :key="sz.id" :value="sz.id">{{ sz.name }}</option>
-                </select>
+                </AppSelect>
               </div>
-              <select v-model="inLoc" class="input mt-2">
+              <AppSelect v-model="inLoc" class="mt-2 w-full">
                 <option value="">보관위치 선택</option>
                 <option v-for="l in locOptions" :key="l.id" :value="l.id">{{ l.code }} · {{ [l.zoneName, l.subZoneName, l.name].filter(Boolean).join(' › ') || '단지 전체' }}</option>
-              </select>
+              </AppSelect>
               <p v-if="inComplex && !locForComplex.length" class="mt-1 text-[11px] text-amber-600">이 단지에 보관위치가 없습니다. 보관위치관리에서 먼저 등록하세요.</p>
             </div>
 
@@ -356,10 +357,10 @@ async function confirmVoid() {
 
             <div class="mb-3">
               <label class="label">사유 / 구분 *</label>
-              <select v-model="reason" class="input">
+              <AppSelect v-model="reason" class="w-full">
                 <option value="">사유 선택</option>
                 <option v-for="r in reasonOptions" :key="r" :value="r">{{ r }}</option>
-              </select>
+              </AppSelect>
             </div>
             <div v-if="reason === '기타'" class="mb-4">
               <label class="label">거래처 / 상세 사유</label>
@@ -374,19 +375,19 @@ async function confirmVoid() {
               </div>
               <div v-if="showUsage">
                 <label class="label">사용처 <span class="font-normal text-slate-400">(사용처/공용 위치코드)</span></label>
-                <select v-model="outComplex" class="input mb-1">
+                <AppSelect v-model="outComplex" class="mb-1 w-full">
                   <option value="">단지 선택</option>
                   <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
-                </select>
+                </AppSelect>
                 <div class="grid grid-cols-2 gap-1">
-                  <select v-model="outZone" class="input" :disabled="!outComplex">
+                  <AppSelect v-model="outZone" class="w-full" :disabled="!outComplex">
                     <option value="">구역 선택</option>
                     <option v-for="z in outZoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option>
-                  </select>
-                  <select v-model="outSub" class="input" :disabled="!outZone">
+                  </AppSelect>
+                  <AppSelect v-model="outSub" class="w-full" :disabled="!outZone">
                     <option value="">상세구역(선택)</option>
                     <option v-for="sz in outSubChoices" :key="sz.id" :value="sz.id">{{ sz.name }}</option>
-                  </select>
+                  </AppSelect>
                 </div>
                 <p v-if="outComplex && !outZoneChoices.length" class="mt-1 text-[11px] text-amber-600">이 단지에 사용처/공용 구역이 없습니다. 위치코드관리에서 구역 타입을 사용처/공용으로 지정하세요.</p>
               </div>
@@ -434,10 +435,10 @@ async function confirmVoid() {
           <p><span class="badge bg-slate-100 text-[10px]">{{ typeLabel[voidTarget.type] }}</span> <b>{{ voidTarget.qty }}개</b> · {{ voidTarget.skuCode }}</p>
           <p class="mt-1 text-xs text-slate-500">{{ voidTarget.before }}→{{ voidTarget.after }}개 · {{ fmtTime(voidTarget.at) }}</p>
         </div>
-        <select v-model="voidReason" class="input mb-2">
+        <AppSelect v-model="voidReason" class="mb-2 w-full">
           <option value="">취소 사유 선택</option>
           <option v-for="r in VOID_REASONS" :key="r" :value="r">{{ r }}</option>
-        </select>
+        </AppSelect>
         <input v-if="voidReason === '기타'" v-model="voidMemo" class="input mb-2" placeholder="상세 사유" />
         <div class="flex justify-end gap-2">
           <button class="btn-ghost" :disabled="voiding" @click="voidTarget = null">닫기</button>

@@ -5,6 +5,7 @@ import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
 import { usePagination } from '@/composables/usePagination'
 import Pager from '@/components/ui/Pager.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -200,14 +201,14 @@ async function remove(p) {
     </PageHeader>
 
     <div class="no-print mb-3 flex flex-wrap items-center gap-2">
-      <select v-for="(c, i) in CHAIN" :key="c.col" v-model="filterSel[c.col]" class="input w-auto">
+      <AppSelect v-for="(c, i) in CHAIN" :key="c.col" v-model="filterSel[c.col]" class="w-auto">
         <option value="">전체 {{ c.label }}</option>
         <option v-for="o in options(i, filterSel)" :key="o.id" :value="o.id">{{ o.name }}</option>
-      </select>
+      </AppSelect>
       <input v-model="search" class="input w-full sm:w-64" placeholder="상품명/제조사/바코드 검색" />
-      <select v-model="pageSize" class="input w-auto sm:ml-auto">
+      <AppSelect v-model="pageSize" class="w-auto sm:ml-auto">
         <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
-      </select>
+      </AppSelect>
     </div>
 
     <div class="card">
@@ -293,10 +294,10 @@ async function remove(p) {
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div v-for="(c, i) in CHAIN" :key="c.col">
             <label class="label">{{ c.label }} <span v-if="c.required" class="text-rose-500">*</span><span v-else class="text-slate-300"> (선택)</span></label>
-            <select v-model="form.sel[c.col]" class="input">
+            <AppSelect v-model="form.sel[c.col]" class="w-full">
               <option value="">{{ c.required ? '선택하세요' : '선택 안 함' }}</option>
               <option v-for="o in formOptions(i)" :key="o.id" :value="o.id">{{ o.name }} ({{ o.code }})</option>
-            </select>
+            </AppSelect>
           </div>
         </div>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">

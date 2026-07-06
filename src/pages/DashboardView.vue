@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { resolveImage } from '@/utils/image'
 import { specText } from '@/utils/sku'
 
@@ -329,12 +330,12 @@ async function openProductDetail(productId) {
             <div class="mb-2 flex items-center justify-between">
               <button class="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100" @click="shiftMonth(-1)">‹</button>
               <div class="flex items-center gap-1">
-                <select v-model.number="calYear" class="input w-auto py-1 text-sm" @change="onYm">
+                <AppSelect v-model="calYear" class="w-auto py-1 text-sm" @change="onYm">
                   <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}년</option>
-                </select>
-                <select v-model.number="calMonth" class="input w-auto py-1 text-sm" @change="onYm">
+                </AppSelect>
+                <AppSelect v-model="calMonth" class="w-auto py-1 text-sm" @change="onYm">
                   <option v-for="m in 12" :key="m" :value="m - 1">{{ m }}월</option>
-                </select>
+                </AppSelect>
               </div>
               <button class="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100" @click="shiftMonth(1)">›</button>
             </div>
