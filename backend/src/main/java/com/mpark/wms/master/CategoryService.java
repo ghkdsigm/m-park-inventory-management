@@ -1,5 +1,6 @@
 package com.mpark.wms.master;
 
+import com.mpark.wms.audit.AuditService;
 import com.mpark.wms.common.ApiException;
 import com.mpark.wms.common.code.CodeGenerator;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ public class CategoryService {
 
     private final CategoryRepository repo;
     private final CodeGenerator codeGenerator;
+    private final AuditService auditService;
 
     @Transactional(readOnly = true)
     public List<Category> list() {
@@ -32,17 +34,24 @@ public class CategoryService {
         Category c = new Category();
         c.setCode(codeGenerator.next("categories", "CTG"));   // 자동코드
         apply(c, r);
-        return repo.save(c);
+        Category saved = repo.save(c);
+        auditService.log("기준정보", "카테고리 생성", saved.getId(), saved.getName(), saved.getName(), null, "name=" + saved.getName());
+        return saved;
     }
 
     public Category update(String id, CategoryRequest r) {
         Category c = repo.findById(id).orElseThrow(() -> ApiException.notFound("카테고리를 찾을 수 없습니다."));
+        String before = c.getName();
         apply(c, r);   // code 는 유지
-        return repo.save(c);
+        Category saved = repo.save(c);
+        auditService.log("기준정보", "카테고리 수정", id, saved.getName(), saved.getName(), "name=" + before, "name=" + saved.getName());
+        return saved;
     }
 
     public void remove(String id) {
+        Category c = repo.findById(id).orElse(null);
         repo.deleteById(id);
+        if (c != null) auditService.log("기준정보", "카테고리 삭제", id, c.getName(), c.getName(), "name=" + c.getName(), null);
     }
 
     private void apply(Category c, CategoryRequest r) {

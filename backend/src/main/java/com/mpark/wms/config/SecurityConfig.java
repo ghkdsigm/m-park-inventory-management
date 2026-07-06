@@ -49,10 +49,12 @@ public class SecurityConfig {
                         .requestMatchers("/files/**").permitAll()           // 이미지 (Phase 6)
                         // 관리자 전용 (사용자관리/감사로그)
                         .requestMatchers("/api/users/**", "/api/audit-logs", "/api/audit/**").hasRole("ADMIN")
-                        // SKU 조회용 POST + 스톡 작업 (세부 권한은 서비스에서)
+                        // SKU 조회용 POST + 입/출고·이동 (세부 권한은 서비스에서 can_stock 으로 검증)
+                        // ※ 재고조정/실사(/api/stock/adjust)·audit-resolve 는 여기 없음 → 서비스의 isAdmin() + 기본 규칙으로 관리자 전용 유지
                         .requestMatchers(HttpMethod.POST,
                                 "/api/skus/page", "/api/skus/page-by-sku", "/api/skus/group-by-complex", "/api/skus/by-ids",
-                                "/api/stock/apply", "/api/movements/*/void", "/api/skus/*/replace-lifecycle").authenticated()
+                                "/api/stock/inbound", "/api/stock/outbound", "/api/stock/transfer",
+                                "/api/movements/*/void", "/api/skus/*/replace-lifecycle").authenticated()
                         // 그 외 쓰기(생성/수정/삭제) = 관리자
                         .requestMatchers(HttpMethod.POST, "/api/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/**").hasRole("ADMIN")

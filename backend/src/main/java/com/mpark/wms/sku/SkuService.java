@@ -1,9 +1,12 @@
 package com.mpark.wms.sku;
 
+import com.mpark.wms.audit.AuditService;
 import com.mpark.wms.common.ApiException;
+import com.mpark.wms.movement.StockMovementRepository;
 import com.mpark.wms.product.Product;
 import com.mpark.wms.product.ProductRepository;
 import com.mpark.wms.sku.SkuDtos.*;
+import com.mpark.wms.stock.StockRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +27,9 @@ public class SkuService {
     private final SkuRepository repo;
     private final ProductRepository productRepo;
     private final SkuQueryRepository queryRepo;
+    private final StockRepository stockRepo;
+    private final StockMovementRepository movementRepo;
+    private final AuditService auditService;
 
     /* ---------- 단순 조회 ---------- */
     @Transactional(readOnly = true)
@@ -73,16 +79,35 @@ public class SkuService {
         s.setCode(product.getCode() + "-" + String.format("%03d", seq));
         s.setQrGenerated(true);
         apply(s, r, product);
-        return repo.save(s);
+        Sku saved = repo.save(s);
+        auditService.log("SKU관리", "생성", saved.getId(), saved.getCode(), saved.getProductName(), null, skuSummary(saved));
+        return saved;
     }
 
     public Sku update(String id, SkuRequest r) {
         Sku s = repo.findById(id).orElseThrow(() -> ApiException.notFound("SKU를 찾을 수 없습니다."));
+        String before = skuSummary(s);
         apply(s, r, null);
-        return repo.save(s);
+        Sku saved = repo.save(s);
+        auditService.log("SKU관리", "수정", id, saved.getCode(), saved.getProductName(), before, skuSummary(saved));
+        return saved;
     }
 
-    public void remove(String id) { repo.deleteById(id); }
+    private static String skuSummary(Sku s) {
+        return "spec=" + nz(s.getSpec()) + ", color=" + nz(s.getColor())
+                + ", price=" + (s.getPrice() == null ? "" : s.getPrice()) + ", safety=" + s.getSafetyStock();
+    }
+
+    public void remove(String id) {
+        // 재고/원장 보존: 재고행이나 입출고 이력이 있으면 삭제 금지 (FK CASCADE 로 인한 이력 전멸 방지)
+        if (stockRepo.existsBySkuId(id))
+            throw ApiException.badRequest("재고가 있는 SKU는 삭제할 수 없습니다. 먼저 출고/조정으로 재고를 정리하세요.");
+        if (movementRepo.existsBySkuId(id))
+            throw ApiException.badRequest("입출고 이력이 있는 SKU는 삭제할 수 없습니다. 이력 보존을 위해 삭제가 제한됩니다.");
+        Sku s = repo.findById(id).orElse(null);
+        repo.deleteById(id);
+        if (s != null) auditService.log("SKU관리", "삭제", id, s.getCode(), s.getProductName(), skuSummary(s), null);
+    }
 
     private void apply(Sku s, SkuRequest r, Product product) {
         s.setProductId(r.productId() != null ? r.productId() : s.getProductId());

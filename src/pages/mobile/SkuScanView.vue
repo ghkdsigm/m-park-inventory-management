@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { skus, products, storageLocations, zones, subZones, inboundStock, outboundStock, adjustStock, listMovements, replaceLifecycle, voidMovement } from '@/services/db'
 import { setAutoLogin, getAutoLogin } from '@/supabase'
@@ -25,6 +25,9 @@ const totalQty = ref(0)
 const selectedStockId = ref('')
 const movements = ref([])
 const working = ref(false)
+const opRid = ref('') // 멱등 요청ID
+const newRid = () => (globalThis.crypto?.randomUUID?.() || (Date.now() + '-' + Math.random().toString(16).slice(2)))
+watch(selectedStockId, () => { opRid.value = '' })
 const imgOpen = ref(false)
 
 const EMAIL_KEY = 'mpark.savedEmail'
@@ -87,6 +90,7 @@ const adjMemo = ref('')
 
 function pickMode(m) {
   mode.value = m
+  opRid.value = ''
   if (m === 'in') { inQty.value = 1; inReason.value = ''; inMemo.value = '' }
   else if (m === 'out') {
     outQty.value = 1; outReason.value = ''; outMemo.value = ''
@@ -232,9 +236,11 @@ async function doInbound() {
   const locLabel = loc ? [loc.code, [loc.zoneName, loc.subZoneName, loc.name].filter(Boolean).join(' › ')].filter(Boolean).join(' · ') : ''
   const ok = await confirm.value.ask({ title: '입고', message: `${sku.value.code} · ${v}개\n위치: ${locLabel}\n입고하시겠습니까?`, confirmText: '입고' })
   if (!ok) return
+  if (!opRid.value) opRid.value = newRid()
   working.value = true
   try {
-    const r = await inboundStock(sku.value.id, inLoc.value, v, inReason.value === '기타' ? inMemo.value : '', inReason.value)
+    const r = await inboundStock(sku.value.id, inLoc.value, v, inReason.value === '기타' ? inMemo.value : '', inReason.value, opRid.value)
+    opRid.value = ''
     toast.success(`입고 완료 · 재고 ${r.before}→${r.after}개`)
     mode.value = ''; await load()
   } catch (e) { toast.error(e.message || '처리 실패') } finally { working.value = false }
@@ -252,12 +258,14 @@ async function doOutbound() {
     confirmText: '출고',
   })
   if (!ok) return
+  if (!opRid.value) opRid.value = newRid()
   working.value = true
   try {
     const r = await outboundStock(selectedStock.value.stockId, v, outReason.value === '기타' ? outMemo.value : '', outReason.value, {
       usagePlace: outLocLabel.value, requestDept: requestDept.value.trim(),
       requester: requester.value.trim(), handler: handler.value.trim(),
-    })
+    }, opRid.value)
+    opRid.value = ''
     toast.success(`출고 완료 · 재고 ${r.before}→${r.after}개`)
     mode.value = ''; await load()
   } catch (e) { toast.error(e.message || '처리 실패') } finally { working.value = false }
@@ -270,9 +278,11 @@ async function doAdjust(type, label) {
   if (!Number.isFinite(v) || v < 0) return toast.error('수량을 올바르게 입력하세요.')
   const ok = await confirm.value.ask({ title: `${label} 처리`, message: `${sku.value.code} @${selectedStock.value.complexName}\n${label} = ${v}개 진행할까요?`, confirmText: label })
   if (!ok) return
+  if (!opRid.value) opRid.value = newRid()
   working.value = true
   try {
-    const r = await adjustStock(selectedStock.value.stockId, type, v, adjReason.value === '기타' ? adjMemo.value : '', adjReason.value)
+    const r = await adjustStock(selectedStock.value.stockId, type, v, adjReason.value === '기타' ? adjMemo.value : '', adjReason.value, opRid.value)
+    opRid.value = ''
     toast.success(`${label} 완료 · 재고 ${r.before}→${r.after}개`); adjMemo.value = ''; await load()
   } catch (e) { toast.error(e.message || '처리 실패') } finally { working.value = false }
 }

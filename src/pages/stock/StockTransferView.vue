@@ -31,6 +31,8 @@ const qty = ref(1)
 const reason = ref('')
 const memo = ref('')
 const working = ref(false)
+const opRid = ref('') // 멱등 요청ID
+const newRid = () => (globalThis.crypto?.randomUUID?.() || (Date.now() + '-' + Math.random().toString(16).slice(2)))
 const imgOpen = ref(false)
 const REASONS = ['단지간 이동', '위치 정리/재배치', '반품 이동', '기타']
 
@@ -75,7 +77,7 @@ watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => 
 function selectRow(s) {
   selected.value = s
   qty.value = s.qty
-  reason.value = ''; memo.value = ''
+  reason.value = ''; memo.value = ''; opRid.value = ''
   toComplex.value = ''; toZone.value = ''; toSub.value = ''; toLoc.value = ''
 }
 
@@ -97,6 +99,7 @@ async function submit() {
     confirmText: '재고 이동',
   })
   if (!ok) return
+  if (!opRid.value) opRid.value = newRid()
 
   working.value = true
   try {
@@ -105,7 +108,9 @@ async function submit() {
       toStorageLocationId: toLoc.value,
       qty: v,
       reason: reason.value === '기타' ? (memo.value || '기타') : reason.value,
+      requestId: opRid.value,
     })
+    opRid.value = ''
     toast.success(r.relocated ? '위치가 이동되었습니다.' : `재고이동 완료 · ${v}개`)
     selected.value = null
     await fetchPage()

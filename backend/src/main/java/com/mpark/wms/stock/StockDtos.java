@@ -7,14 +7,14 @@ public final class StockDtos {
     private StockDtos() {}
 
     /** 입고 — SKU + 보관위치(필수) + 수량. 위치의 단지로 재고행을 find/create. */
-    public record InboundRequest(String skuId, String storageLocationId, Integer qty, String memo, String reason) {}
+    public record InboundRequest(String skuId, String storageLocationId, Integer qty, String memo, String reason, String requestId) {}
 
     /** 출고 — 재고행 대상 (+ 출고 상세: 사용처/요청부서/요청자/담당자) */
     public record OutboundRequest(String stockId, Integer qty, String memo, String reason,
-                                  String usagePlace, String requestDept, String requester, String handler) {}
+                                  String usagePlace, String requestDept, String requester, String handler, String requestId) {}
 
     /** 조정/실사 — 재고행 대상. type: adjust | audit */
-    public record AdjustRequest(String stockId, String type, Integer value, String memo, String reason) {}
+    public record AdjustRequest(String stockId, String type, Integer value, String memo, String reason, String requestId) {}
 
     public record StockResult(int before, int after, int delta) {}
 
@@ -27,6 +27,6 @@ public final class StockDtos {
     public record AuditResolveRequest(String reason) {}
 
     /** 재고이동 — 출발 재고행 → 도착 보관위치(필수). 같은 SKU의 도착 재고행에 합류. */
-    public record TransferRequest(String stockId, String toStorageLocationId, Integer qty, String memo, String reason) {}
+    public record TransferRequest(String stockId, String toStorageLocationId, Integer qty, String memo, String reason, String requestId) {}
     public record TransferResult(String transferId, String fromStockId, String toStockId, int qty, boolean relocated) {}
 }

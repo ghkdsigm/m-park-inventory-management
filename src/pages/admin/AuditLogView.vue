@@ -23,7 +23,7 @@ const logs = ref([])
 const userList = ref([])
 const loading = ref(true)
 
-const MODULES = ['기준정보', '상품관리', '위치관리', '입/출고관리', '재고관리']
+const MODULES = ['기준정보', '상품관리', 'SKU관리', '위치관리', '입/출고관리', '재고관리', '권한관리', '인증']
 const actionMeta = {
   생성: 'bg-emerald-50 text-emerald-700',
   수정: 'bg-amber-50 text-amber-700',
@@ -38,9 +38,12 @@ const actionMeta = {
 const moduleColor = {
   기준정보: 'bg-slate-100 text-slate-600',
   상품관리: 'bg-brand-50 text-brand-700',
+  SKU관리: 'bg-brand-50 text-brand-700',
   위치관리: 'bg-teal-50 text-teal-700',
   '입/출고관리': 'bg-sky-50 text-sky-700',
   재고관리: 'bg-amber-50 text-amber-700',
+  권한관리: 'bg-rose-50 text-rose-600',
+  인증: 'bg-violet-50 text-violet-700',
 }
 
 async function load() {
@@ -118,7 +121,9 @@ const { paged, page, pageSize, sizes, total, totalPages } = usePagination(logs, 
             <th class="px-3 py-2.5 font-semibold">작업</th>
             <th class="px-3 py-2.5 font-semibold">대상</th>
             <th class="px-3 py-2.5 font-semibold">상품/SKU명</th>
+            <th class="hidden px-3 py-2.5 font-semibold lg:table-cell">변경내용(전→후)</th>
             <th class="px-3 py-2.5 font-semibold">변경자</th>
+            <th class="hidden px-3 py-2.5 font-semibold md:table-cell">IP</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
@@ -128,7 +133,16 @@ const { paged, page, pageSize, sizes, total, totalPages } = usePagination(logs, 
             <td class="px-3 py-2.5"><span class="badge" :class="actionMeta[l.action] || 'bg-slate-100 text-slate-500'">{{ l.action }}</span></td>
             <td class="px-3 py-2.5"><span class="font-mono text-xs text-slate-500">{{ l.label || '—' }}</span></td>
             <td class="px-3 py-2.5 text-slate-700">{{ l.name || '—' }}</td>
-            <td class="whitespace-nowrap px-3 py-2.5 text-slate-600">{{ l.byName || '(알수없음)' }}</td>
+            <td class="hidden px-3 py-2.5 text-xs text-slate-500 lg:table-cell">
+              <span v-if="l.beforeValue || l.afterValue">
+                <span class="text-slate-400">{{ l.beforeValue || '—' }}</span>
+                <span class="mx-1 text-slate-300">→</span>
+                <span class="text-slate-700">{{ l.afterValue || '—' }}</span>
+              </span>
+              <span v-else class="text-slate-300">—</span>
+            </td>
+            <td class="whitespace-nowrap px-3 py-2.5 text-slate-600">{{ l.byName || l.name || '(알수없음)' }}</td>
+            <td class="hidden whitespace-nowrap px-3 py-2.5 font-mono text-xs text-slate-400 md:table-cell">{{ l.ip || '—' }}</td>
           </tr>
         </tbody>
       </table>

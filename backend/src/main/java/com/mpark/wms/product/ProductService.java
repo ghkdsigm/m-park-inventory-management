@@ -1,5 +1,6 @@
 package com.mpark.wms.product;
 
+import com.mpark.wms.audit.AuditService;
 import com.mpark.wms.common.ApiException;
 import com.mpark.wms.common.code.CodeGenerator;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ public class ProductService {
 
     private final ProductRepository repo;
     private final CodeGenerator codeGenerator;
+    private final AuditService auditService;
 
     @Transactional(readOnly = true)
     public List<Product> list() {
@@ -34,17 +36,29 @@ public class ProductService {
         p.setCode(codeGenerator.next("products", "P")); // 자동코드
         p.setSkuSeq(0);
         apply(p, r);
-        return repo.save(p);
+        Product saved = repo.save(p);
+        auditService.log("상품관리", "생성", saved.getId(), saved.getCode(), saved.getName(), null, productSummary(saved));
+        return saved;
     }
 
     public Product update(String id, ProductRequest r) {
         Product p = repo.findById(id).orElseThrow(() -> ApiException.notFound("상품을 찾을 수 없습니다."));
+        String before = productSummary(p);
         apply(p, r); // code/skuSeq 유지
-        return repo.save(p);
+        Product saved = repo.save(p);
+        auditService.log("상품관리", "수정", id, saved.getCode(), saved.getName(), before, productSummary(saved));
+        return saved;
     }
 
     public void remove(String id) {
+        Product p = repo.findById(id).orElse(null);
         repo.deleteById(id);
+        if (p != null) auditService.log("상품관리", "삭제", id, p.getCode(), p.getName(), productSummary(p), null);
+    }
+
+    private static String productSummary(Product p) {
+        return "name=" + nz(p.getName()) + ", maker=" + nz(p.getMaker())
+                + ", price=" + (p.getPrice() == null ? "" : p.getPrice()) + ", path=" + nz(p.getPathLabel());
     }
 
     private void apply(Product p, ProductRequest r) {

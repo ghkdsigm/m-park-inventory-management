@@ -5,9 +5,12 @@ import com.mpark.wms.common.security.CurrentUser;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.TypedQuery;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -29,6 +32,12 @@ public class AuditService {
     /** 감사로그 1건 기록 (스톡 RPC 의 log_audit 대체) */
     @Transactional
     public void log(String module, String action, String rowId, String label, String name) {
+        log(module, action, rowId, label, name, null, null);
+    }
+
+    /** 변경 전/후 값 포함 기록 */
+    @Transactional
+    public void log(String module, String action, String rowId, String label, String name, String before, String after) {
         AuditLog a = new AuditLog();
         a.setModule(module);
         a.setTableName("skus");
@@ -36,9 +45,29 @@ public class AuditService {
         a.setRowId(rowId);
         a.setLabel(label);
         a.setName(name == null ? "" : name);
+        a.setBeforeValue(trunc(before));
+        a.setAfterValue(trunc(after));
+        a.setIp(clientIp());
         a.setByUserId(currentUser.id());
         a.setByName(currentUser.name());
         repo.save(a);
+    }
+
+    private static String trunc(String s) {
+        if (s == null) return null;
+        return s.length() > 1000 ? s.substring(0, 1000) : s;
+    }
+
+    private static String clientIp() {
+        try {
+            if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes sra) {
+                HttpServletRequest req = sra.getRequest();
+                String xff = req.getHeader("X-Forwarded-For");
+                if (xff != null && !xff.isBlank()) return xff.split(",")[0].trim();
+                return req.getRemoteAddr();
+            }
+        } catch (Exception e) { /* 요청 밖(스케줄러 등)에서는 IP 없음 */ }
+        return null;
     }
 
     /* ---------- 조회 (하루 단위 + module/byUserId 선택 필터) ---------- */

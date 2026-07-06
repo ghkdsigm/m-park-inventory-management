@@ -40,11 +40,14 @@ public class StockService {
     private final LocationLogRepository locationLogRepo;
     private final AuditService auditService;
     private final CurrentUser currentUser;
+    private final IdempotencyKeyRepository idemRepo;
     @PersistenceContext private EntityManager em;
 
     /* ===================== 입고 ===================== */
     public StockResult inbound(InboundRequest r) {
         if (!currentUser.canStock()) throw ApiException.forbidden("입/출고 권한이 없습니다. 관리자에게 문의하세요.");
+        StockResult dup = idemLookup(r.requestId());
+        if (dup != null) return dup; // 중복 요청 — 이미 반영됨
         int val = nz(r.qty());
         if (val <= 0) throw ApiException.badRequest("수량을 올바르게 입력하세요.");
         if (isBlank(r.skuId())) throw ApiException.badRequest("SKU를 선택하세요.");
@@ -78,12 +81,15 @@ public class StockService {
         bumpDaily("in", val, +1);
         auditService.log("입/출고관리", "입고", sku.getId(),
                 sku.getCode() + " @" + nz2(st.getComplexName()) + " (" + before + "→" + after + ")", sku.getProductName());
+        idemStore(r.requestId(), before, after, val);
         return new StockResult(before, after, val);
     }
 
     /* ===================== 출고 ===================== */
     public StockResult outbound(OutboundRequest r) {
         if (!currentUser.canStock()) throw ApiException.forbidden("입/출고 권한이 없습니다. 관리자에게 문의하세요.");
+        StockResult dup = idemLookup(r.requestId());
+        if (dup != null) return dup; // 중복 요청 — 이미 반영됨
         int val = nz(r.qty());
         if (val <= 0) throw ApiException.badRequest("수량을 올바르게 입력하세요.");
         Stock st = stockRepo.findByIdForUpdate(r.stockId())
@@ -107,12 +113,15 @@ public class StockService {
         bumpDaily("out", val, +1);
         auditService.log("입/출고관리", "출고", sku.getId(),
                 sku.getCode() + " @" + nz2(st.getComplexName()) + " (" + before + "→" + after + ")", sku.getProductName());
+        idemStore(r.requestId(), before, after, -val);
         return new StockResult(before, after, -val);
     }
 
     /* ===================== 조정 / 실사 ===================== */
     public StockResult adjust(AdjustRequest r) {
         if (!currentUser.isAdmin()) throw ApiException.forbidden("재고조정/실사 권한이 없습니다.");
+        StockResult dup = idemLookup(r.requestId());
+        if (dup != null) return dup; // 중복 요청 — 이미 반영됨
         String type = "audit".equals(r.type()) ? "audit" : "adjust";
         int val = nz(r.value());
         if (val < 0) throw ApiException.badRequest("수량을 올바르게 입력하세요.");
@@ -144,6 +153,7 @@ public class StockService {
         bumpDaily(type, Math.abs(delta), +1);
         auditService.log("재고관리", "audit".equals(type) ? "재고실사" : "재고조정", sku.getId(),
                 sku.getCode() + " (" + before + "→" + after + ")", sku.getProductName());
+        idemStore(r.requestId(), before, after, delta);
         return new StockResult(before, after, delta);
     }
 
@@ -171,6 +181,8 @@ public class StockService {
     /* ===================== 재고이동 (재고행 → 도착 위치) ===================== */
     public TransferResult transfer(TransferRequest r) {
         if (!currentUser.canStock()) throw ApiException.forbidden("재고이동 권한이 없습니다. 관리자에게 문의하세요.");
+        if (!isBlank(r.requestId()) && idemRepo.existsById(r.requestId()))
+            throw ApiException.badRequest("이미 처리된 이동 요청입니다. 재고를 새로고침해 확인하세요.");
         int qty = nz(r.qty());
         if (isBlank(r.toStorageLocationId())) throw ApiException.badRequest("도착 보관위치를 지정하세요.");
 
@@ -232,6 +244,7 @@ public class StockService {
 
         auditService.log("입/출고관리", "재고이동", sku.getId(),
                 sku.getCode() + " " + fromLabel + " → " + locLabel(dest) + " " + moveQty + "개", sku.getProductName());
+        idemStore(r.requestId(), sBefore, src.getQty(), -moveQty);
         return new TransferResult(transferId, src.getId(), dest.getId(), moveQty, whole);
     }
 
@@ -439,6 +452,25 @@ public class StockService {
         if (qty <= 0) return "out";
         if (safety > 0 && qty <= safety) return "low";
         return "in_stock";
+    }
+
+    /* ---------- 멱등 처리 ---------- */
+    /** 같은 request_id 로 이미 처리됐으면 그때의 결과를 반환(없으면 null) */
+    private StockResult idemLookup(String rid) {
+        if (isBlank(rid)) return null;
+        return idemRepo.findById(rid)
+                .map(k -> new StockResult(nz(k.getBeforeQty()), nz(k.getAfterQty()), nz(k.getDelta())))
+                .orElse(null);
+    }
+    /** 처리 결과를 request_id 로 기록(중복 재요청 시 재적용 방지). 같은 트랜잭션에서 저장 */
+    private void idemStore(String rid, int before, int after, int delta) {
+        if (isBlank(rid)) return;
+        IdempotencyKey k = new IdempotencyKey();
+        k.setRequestId(rid);
+        k.setBeforeQty(before);
+        k.setAfterQty(after);
+        k.setDelta(delta);
+        idemRepo.save(k);
     }
 
     private static boolean isBlank(String s) { return s == null || s.isBlank(); }

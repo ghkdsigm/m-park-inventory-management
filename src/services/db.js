@@ -155,22 +155,23 @@ function mapMovement(m) {
 }
 
 /** 입고 — SKU(변형) + 보관위치(필수) + 수량 → 재고행 find/create */
-export async function inboundStock(skuId, storageLocationId, qty, memo = '', reason = '') {
-  return api.post('/stock/inbound', { skuId, storageLocationId, qty: Number(qty), memo: memo || '', reason: reason || '' })
+export async function inboundStock(skuId, storageLocationId, qty, memo = '', reason = '', requestId = '') {
+  return api.post('/stock/inbound', { skuId, storageLocationId, qty: Number(qty), memo: memo || '', reason: reason || '', requestId: requestId || '' })
 }
 
 /** 출고 — 재고행(stockId) 대상. extra: 사용처/요청부서/요청자/담당자 */
-export async function outboundStock(stockId, qty, memo = '', reason = '', extra = {}) {
+export async function outboundStock(stockId, qty, memo = '', reason = '', extra = {}, requestId = '') {
   return api.post('/stock/outbound', {
     stockId, qty: Number(qty), memo: memo || '', reason: reason || '',
     usagePlace: extra.usagePlace || '', requestDept: extra.requestDept || '',
     requester: extra.requester || '', handler: extra.handler || '',
+    requestId: requestId || '',
   })
 }
 
 /** 조정/실사 — 재고행(stockId) 대상. type: 'adjust' | 'audit' */
-export async function adjustStock(stockId, type, value, memo = '', reason = '') {
-  return api.post('/stock/adjust', { stockId, type, value: Number(value), memo: memo || '', reason: reason || '' })
+export async function adjustStock(stockId, type, value, memo = '', reason = '', requestId = '') {
+  return api.post('/stock/adjust', { stockId, type, value: Number(value), memo: memo || '', reason: reason || '', requestId: requestId || '' })
 }
 
 /** 재고이동 — 출발 재고행(stockId) → 도착 보관위치(필수). 같은 SKU의 도착 재고행에 합류. */
@@ -181,6 +182,7 @@ export async function transferStock(payload) {
     qty: payload.qty != null ? Number(payload.qty) : null,
     memo: payload.memo || '',
     reason: payload.reason || '',
+    requestId: payload.requestId || '',
   })
 }
 

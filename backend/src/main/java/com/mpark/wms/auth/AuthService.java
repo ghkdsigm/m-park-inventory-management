@@ -1,5 +1,6 @@
 package com.mpark.wms.auth;
 
+import com.mpark.wms.audit.AuditService;
 import com.mpark.wms.auth.AuthDtos.*;
 import com.mpark.wms.common.ApiException;
 import com.mpark.wms.common.security.CurrentUser;
@@ -20,6 +21,7 @@ public class AuthService {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final CurrentUser currentUser;
+    private final AuditService auditService;
 
     public AuthResponse register(RegisterRequest r) {
         String email = norm(r.email());
@@ -43,6 +45,7 @@ public class AuthService {
                 .orElseThrow(() -> ApiException.unauthorized("이메일 또는 비밀번호가 올바르지 않습니다."));
         if (!encoder.matches(r.password() == null ? "" : r.password(), p.getPasswordHash()))
             throw ApiException.unauthorized("이메일 또는 비밀번호가 올바르지 않습니다.");
+        auditService.log("인증", "로그인", p.getId(), p.getEmail(), p.getDisplayName());
         return new AuthResponse(token(p), toDto(p));
     }
 
@@ -68,12 +71,16 @@ public class AuthService {
     public void setRole(String id, String role) {
         if (!"admin".equals(role) && !"user".equals(role)) throw ApiException.badRequest("잘못된 권한입니다.");
         Profile p = repo.findById(id).orElseThrow(() -> ApiException.notFound("사용자를 찾을 수 없습니다."));
+        String before = p.getRole();
         p.setRole(role);
+        auditService.log("권한관리", "권한변경", id, p.getEmail(), p.getDisplayName(), "role=" + before, "role=" + role);
     }
 
     public void setStockPerm(String id, boolean canStock) {
         Profile p = repo.findById(id).orElseThrow(() -> ApiException.notFound("사용자를 찾을 수 없습니다."));
+        boolean before = p.isCanStock();
         p.setCanStock(canStock);
+        auditService.log("권한관리", "입출고권한변경", id, p.getEmail(), p.getDisplayName(), "canStock=" + before, "canStock=" + canStock);
     }
 
     private String token(Profile p) {

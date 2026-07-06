@@ -14,6 +14,8 @@ public interface StockRepository extends JpaRepository<Stock, String> {
 
     List<Stock> findBySkuId(String skuId);
 
+    boolean existsBySkuId(String skuId);
+
     List<Stock> findBySkuIdIn(java.util.Collection<String> skuIds);
 
     Optional<Stock> findBySkuIdAndStorageLocationId(String skuId, String storageLocationId);

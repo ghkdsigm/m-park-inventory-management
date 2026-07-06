@@ -47,6 +47,8 @@ const search = ref('')
 const qty = ref(1)
 const memo = ref('')
 const working = ref(false)
+const opRid = ref('') // 멱등 요청ID (실패 재시도 시 재사용, 성공/재선택 시 초기화)
+const newRid = () => (globalThis.crypto?.randomUUID?.() || (Date.now() + '-' + Math.random().toString(16).slice(2)))
 const selected = ref(null) // 입고=변형 SKU, 그외=재고행(StockRow)
 const movements = ref([])
 const imgOpen = ref(false)
@@ -179,6 +181,7 @@ async function selectItem(x) {
   selected.value = x
   qty.value = isSet.value ? (x.qty || 0) : 1
   memo.value = ''; reason.value = ''
+  opRid.value = ''
   requestDept.value = ''; requester.value = ''
   handler.value = auth.user?.name || ''
   outComplex.value = ''; outZone.value = ''; outSub.value = ''
@@ -201,21 +204,23 @@ async function submit() {
     confirmText: cfg.value.btn,
   })
   if (!ok) return
+  if (!opRid.value) opRid.value = newRid()
 
   working.value = true
   try {
     let r
     if (isInbound.value) {
       if (!inLoc.value) { working.value = false; return toast.error('보관위치를 선택하세요. (입고는 위치 필수)') }
-      r = await inboundStock(selected.value.id, inLoc.value, v, memoVal, reason.value)
+      r = await inboundStock(selected.value.id, inLoc.value, v, memoVal, reason.value, opRid.value)
     } else if (op.value === 'out') {
       r = await outboundStock(selected.value.stockId, v, memoVal, reason.value, {
         usagePlace: outLocLabel.value, requestDept: requestDept.value.trim(),
         requester: requester.value.trim(), handler: handler.value.trim(),
-      })
+      }, opRid.value)
     } else {
-      r = await adjustStock(selected.value.stockId, op.value, v, memoVal, reason.value)
+      r = await adjustStock(selected.value.stockId, op.value, v, memoVal, reason.value, opRid.value)
     }
+    opRid.value = '' // 성공 → 다음 처리용 ID 초기화
     toast.success(`${cfg.value.title} 완료 · 재고 ${r.before} → ${r.after}개`)
     if (isInbound.value) { await loadVariants(); await loadInboundLocations(); selected.value = null }
     else { await fetchRows(); const again = rows.value.find((s) => s.stockId === selected.value?.stockId); selected.value = again || null }

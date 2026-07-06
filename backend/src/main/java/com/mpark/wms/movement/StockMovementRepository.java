@@ -15,6 +15,8 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, St
 
     List<StockMovement> findBySkuIdOrderByAtDesc(String skuId, Pageable pageable);
 
+    boolean existsBySkuId(String skuId);
+
     List<StockMovement> findAllByOrderByAtDesc(Pageable pageable);
 
     List<StockMovement> findByAtBetweenOrderByAtDesc(LocalDateTime from, LocalDateTime to, Pageable pageable);

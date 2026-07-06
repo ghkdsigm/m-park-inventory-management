@@ -102,6 +102,12 @@ function auditMeta(s) {
   if (s.auditStatus === 'mismatch') return { t: '오차', c: 'bg-rose-50 text-rose-600' }
   return { t: '정상', c: 'bg-emerald-50 text-emerald-700' }
 }
+// 보관위치 전체 경로: 단지 › 구역 › 상세구역 › 보관위치(말단). locationLabel 이 이미 합쳐진 경우도 말단만 추출해 중복 방지.
+function locText(s) {
+  if (!s) return ''
+  const leaf = (s.locationLabel || '').split(/[>›]/).pop().trim()
+  return [s.complexName, s.zoneName, s.subZoneName, leaf].filter(Boolean).join(' › ')
+}
 
 function curFilters() {
   return {
@@ -298,7 +304,7 @@ function resetFilters() {
             <tr v-for="s in rows" :key="s.stockId" class="hover:bg-slate-50/60">
               <td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" /><div><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span><p class="mt-0.5 text-slate-700">{{ s.productName }} <span class="text-xs text-slate-400">{{ specText(s) }}</span></p></div></div></td>
               <td class="hidden px-3 py-2.5 text-xs text-slate-400 md:table-cell">{{ s.pathLabel }}</td>
-              <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-left ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:ring-brand-300" title="보관위치 이력 보기" @click="openLocation(s)"><span v-if="s.locationLabel" class="text-slate-600">📍 {{ s.locationLabel }}</span><span v-else class="text-slate-300">위치 미지정</span><span v-if="s.locationVerifiedAt" class="text-emerald-600" title="실사 검증됨">✓</span><svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
+              <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-left ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:ring-brand-300" title="보관위치 이력 보기" @click="openLocation(s)"><span v-if="s.locationLabel || s.zoneName" class="text-slate-600">📍 {{ locText(s) }}</span><span v-else class="text-slate-300">위치 미지정</span><span v-if="s.locationVerifiedAt" class="text-emerald-600" title="실사 검증됨">✓</span><svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
               <td class="px-3 py-2.5 text-right font-bold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-800'">{{ s.qty }}</td>
               <td class="hidden px-3 py-2.5 text-right text-slate-500 md:table-cell">{{ Number(s.price || 0).toLocaleString() }}원</td>
               <td class="hidden px-3 py-2.5 text-right font-medium text-slate-700 md:table-cell">{{ (Number(s.price || 0) * Number(s.qty || 0)).toLocaleString() }}원</td>
@@ -338,7 +344,7 @@ function resetFilters() {
         <div class="mb-3 rounded-lg bg-slate-50 p-3">
           <p class="text-sm"><span class="font-mono text-brand-700">{{ locSku.code }}</span> <span class="text-slate-700">{{ locSku.productName }}</span></p>
           <p class="mt-1 text-sm font-medium text-slate-800">
-            📍 현재: {{ locSku.locationLabel ? (locSku.complexName + ' › ' + locSku.locationLabel) : (locSku.complexName || '위치 미지정') }}
+            📍 현재: {{ locText(locSku) || '위치 미지정' }}
             <span v-if="locSku.storageLocationCode" class="font-mono text-xs text-slate-400">({{ locSku.storageLocationCode }})</span>
           </p>
           <p v-if="locSku.locationVerifiedAt" class="mt-0.5 text-xs text-emerald-600">위치 검증: {{ locSku.locationVerifiedBy }} · {{ fmtDateTime(locSku.locationVerifiedAt) }}</p>

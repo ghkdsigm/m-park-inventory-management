@@ -30,6 +30,9 @@ public class AuditLog {
     private String name = "";   // 상품명/이름
     private String byUserId;
     private String byName;
+    private String beforeValue;   // 변경 전 값(요약)
+    private String afterValue;    // 변경 후 값(요약)
+    private String ip;            // 접속 IP
     private LocalDateTime at;
 
     @PrePersist

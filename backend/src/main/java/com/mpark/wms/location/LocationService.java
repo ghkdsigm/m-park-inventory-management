@@ -1,5 +1,6 @@
 package com.mpark.wms.location;
 
+import com.mpark.wms.audit.AuditService;
 import com.mpark.wms.common.ApiException;
 import com.mpark.wms.common.code.CodeGenerator;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ public class LocationService {
     private final SubZoneRepository subZoneRepo;
     private final StorageLocationRepository storageRepo;
     private final CodeGenerator codeGenerator;
+    private final AuditService auditService;
 
     /* ===================== 구역 ===================== */
     @Transactional(readOnly = true)
@@ -34,20 +36,27 @@ public class LocationService {
         z.setType(normType(r.type()));
         z.setComplexId(r.complexId());
         z.setComplexName(nz(r.complexName()));
-        return zoneRepo.save(z);
+        Zone saved = zoneRepo.save(z);
+        auditService.log("위치관리", "구역 생성", saved.getId(), saved.getName(), saved.getComplexName(), null, "name=" + saved.getName() + ", type=" + saved.getType());
+        return saved;
     }
 
     public Zone updateZone(String id, ZoneRequest r) {
         Zone z = zoneRepo.findById(id).orElseThrow(() -> ApiException.notFound("구역을 찾을 수 없습니다."));
+        String before = "name=" + z.getName() + ", type=" + z.getType();
         if (!isBlank(r.name())) z.setName(r.name().trim());
         if (!isBlank(r.type())) z.setType(normType(r.type()));
         if (r.complexId() != null) z.setComplexId(r.complexId());
         z.setComplexName(nz(r.complexName()));
-        return zoneRepo.save(z);
+        Zone saved = zoneRepo.save(z);
+        auditService.log("위치관리", "구역 수정", id, saved.getName(), saved.getComplexName(), before, "name=" + saved.getName() + ", type=" + saved.getType());
+        return saved;
     }
 
     public void removeZone(String id) {
+        Zone z = zoneRepo.findById(id).orElse(null);
         zoneRepo.deleteById(id); // sub_zones 는 FK ON DELETE CASCADE
+        if (z != null) auditService.log("위치관리", "구역 삭제", id, z.getName(), z.getComplexName(), "name=" + z.getName(), null);
     }
 
     /* ===================== 상세구역 ===================== */
@@ -66,22 +75,29 @@ public class LocationService {
         s.setZoneName(nz(r.zoneName()));
         s.setComplexId(r.complexId());
         s.setComplexName(nz(r.complexName()));
-        return subZoneRepo.save(s);
+        SubZone saved = subZoneRepo.save(s);
+        auditService.log("위치관리", "상세구역 생성", saved.getId(), saved.getName(), saved.getZoneName(), null, "name=" + saved.getName() + ", type=" + saved.getType());
+        return saved;
     }
 
     public SubZone updateSubZone(String id, SubZoneRequest r) {
         SubZone s = subZoneRepo.findById(id).orElseThrow(() -> ApiException.notFound("상세구역을 찾을 수 없습니다."));
+        String before = "name=" + s.getName() + ", type=" + s.getType();
         if (!isBlank(r.name())) s.setName(r.name().trim());
         if (!isBlank(r.type())) s.setType(normType(r.type()));
         if (r.zoneId() != null) s.setZoneId(r.zoneId());
         s.setZoneName(nz(r.zoneName()));
         if (r.complexId() != null) s.setComplexId(r.complexId());
         s.setComplexName(nz(r.complexName()));
-        return subZoneRepo.save(s);
+        SubZone saved = subZoneRepo.save(s);
+        auditService.log("위치관리", "상세구역 수정", id, saved.getName(), saved.getZoneName(), before, "name=" + saved.getName() + ", type=" + saved.getType());
+        return saved;
     }
 
     public void removeSubZone(String id) {
+        SubZone s = subZoneRepo.findById(id).orElse(null);
         subZoneRepo.deleteById(id);
+        if (s != null) auditService.log("위치관리", "상세구역 삭제", id, s.getName(), s.getZoneName(), "name=" + s.getName(), null);
     }
 
     /* ===================== 보관위치 ===================== */
@@ -106,17 +122,24 @@ public class LocationService {
         StorageLocation s = new StorageLocation();
         s.setCode(codeGenerator.next("storage_locations", "LOC")); // 자동코드
         apply(s, r);
-        return storageRepo.save(s);
+        StorageLocation saved = storageRepo.save(s);
+        auditService.log("위치관리", "보관위치 생성", saved.getId(), saved.getCode(), saved.getComplexName(), null, "name=" + saved.getName() + ", label=" + saved.getLocationLabel());
+        return saved;
     }
 
     public StorageLocation updateStorage(String id, StorageLocationRequest r) {
         StorageLocation s = storageRepo.findById(id).orElseThrow(() -> ApiException.notFound("보관위치를 찾을 수 없습니다."));
+        String before = "name=" + s.getName() + ", label=" + s.getLocationLabel();
         apply(s, r); // code 유지
-        return storageRepo.save(s);
+        StorageLocation saved = storageRepo.save(s);
+        auditService.log("위치관리", "보관위치 수정", id, saved.getCode(), saved.getComplexName(), before, "name=" + saved.getName() + ", label=" + saved.getLocationLabel());
+        return saved;
     }
 
     public void removeStorage(String id) {
+        StorageLocation s = storageRepo.findById(id).orElse(null);
         storageRepo.deleteById(id);
+        if (s != null) auditService.log("위치관리", "보관위치 삭제", id, s.getCode(), s.getComplexName(), "name=" + s.getName(), null);
     }
 
     private void apply(StorageLocation s, StorageLocationRequest r) {
