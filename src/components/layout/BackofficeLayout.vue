@@ -161,10 +161,12 @@ async function doLogout() {
 
     <!-- 모바일 메뉴 드로어 -->
     <Transition name="fade">
-      <div v-if="drawer" class="no-print fixed inset-0 z-40 lg:hidden" @click.self="drawer = false">
-        <div class="absolute inset-0 bg-slate-900/40" />
+      <div v-if="drawer" class="no-print fixed inset-0 z-40 lg:hidden">
+        <div class="absolute inset-0 bg-slate-900/40" @click="drawer = false" />
         <div class="absolute bottom-0 left-0 right-0 max-h-[80vh] overflow-y-auto rounded-t-2xl bg-white p-4 pb-8 scrollbar-slim">
-          <div class="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-300" />
+          <button type="button" class="mx-auto mb-3 flex w-full justify-center py-1.5" title="닫기" @click="drawer = false">
+            <span class="h-1.5 w-12 rounded-full bg-slate-300" />
+          </button>
           <div v-for="(items, g) in grouped" :key="g" class="mb-3">
             <p v-if="g" class="mb-1 px-1 text-[11px] font-semibold text-slate-400">{{ g }}</p>
             <div class="grid grid-cols-3 gap-2">

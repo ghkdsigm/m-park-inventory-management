@@ -285,30 +285,30 @@ function resetFilters() {
       <div class="overflow-x-auto scrollbar-slim">
         <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
         <div v-else-if="!rows.length" class="p-10 text-center text-sm text-slate-400">조건에 맞는 재고가 없습니다.</div>
-        <table v-else class="w-full text-sm">
+        <table v-else class="w-full min-w-[1120px] text-sm">
           <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
             <tr>
               <th class="px-3 py-2.5 font-semibold">SKU / 상품</th>
-              <th class="hidden px-3 py-2.5 font-semibold md:table-cell">경로</th>
-              <th class="hidden px-3 py-2.5 font-semibold sm:table-cell">보관위치</th>
+              <th class="px-3 py-2.5 font-semibold">경로</th>
+              <th class="px-3 py-2.5 font-semibold">보관위치</th>
               <th class="px-3 py-2.5 text-right font-semibold">재고</th>
-              <th class="hidden px-3 py-2.5 text-right font-semibold md:table-cell">단가</th>
-              <th class="hidden px-3 py-2.5 text-right font-semibold md:table-cell">총가격</th>
-              <th class="hidden px-3 py-2.5 text-right font-semibold sm:table-cell">안전</th>
+              <th class="px-3 py-2.5 text-right font-semibold">단가</th>
+              <th class="px-3 py-2.5 text-right font-semibold">총가격</th>
+              <th class="px-3 py-2.5 text-right font-semibold">안전</th>
               <th class="px-3 py-2.5 font-semibold">재고상태</th>
               <th class="px-3 py-2.5 font-semibold">실사상태</th>
-              <th class="hidden px-3 py-2.5 text-right font-semibold lg:table-cell">입고/출고</th>
+              <th class="px-3 py-2.5 text-right font-semibold">입고/출고</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-50">
             <tr v-for="s in rows" :key="s.stockId" class="hover:bg-slate-50/60">
               <td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><img :src="resolveImage(s)" class="h-9 w-9 shrink-0 rounded border border-slate-100 object-cover" alt="" /><div><span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span><p class="mt-0.5 text-slate-700">{{ s.productName }} <span class="text-xs text-slate-400">{{ specText(s) }}</span></p></div></div></td>
-              <td class="hidden px-3 py-2.5 text-xs text-slate-400 md:table-cell">{{ s.pathLabel }}</td>
-              <td class="hidden px-3 py-2.5 text-xs sm:table-cell"><button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-left ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:ring-brand-300" title="보관위치 이력 보기" @click="openLocation(s)"><span v-if="s.locationLabel || s.zoneName" class="text-slate-600">📍 {{ locText(s) }}</span><span v-else class="text-slate-300">위치 미지정</span><span v-if="s.locationVerifiedAt" class="text-emerald-600" title="실사 검증됨">✓</span><svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
+              <td class="px-3 py-2.5 text-xs text-slate-400">{{ s.pathLabel }}</td>
+              <td class="px-3 py-2.5 text-xs"><button class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-left ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:ring-brand-300" title="보관위치 이력 보기" @click="openLocation(s)"><span v-if="s.locationLabel || s.zoneName" class="text-slate-600">📍 {{ locText(s) }}</span><span v-else class="text-slate-300">위치 미지정</span><span v-if="s.locationVerifiedAt" class="text-emerald-600" title="실사 검증됨">✓</span><svg class="h-3 w-3 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
               <td class="px-3 py-2.5 text-right font-bold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-800'">{{ s.qty }}</td>
-              <td class="hidden px-3 py-2.5 text-right text-slate-500 md:table-cell">{{ Number(s.price || 0).toLocaleString() }}원</td>
-              <td class="hidden px-3 py-2.5 text-right font-medium text-slate-700 md:table-cell">{{ (Number(s.price || 0) * Number(s.qty || 0)).toLocaleString() }}원</td>
-              <td class="hidden px-3 py-2.5 text-right text-slate-400 sm:table-cell">{{ s.safetyStock || '—' }}</td>
+              <td class="px-3 py-2.5 text-right text-slate-500">{{ Number(s.price || 0).toLocaleString() }}원</td>
+              <td class="px-3 py-2.5 text-right font-medium text-slate-700">{{ (Number(s.price || 0) * Number(s.qty || 0)).toLocaleString() }}원</td>
+              <td class="px-3 py-2.5 text-right text-slate-400">{{ s.safetyStock || '—' }}</td>
               <td class="px-3 py-2.5"><span class="badge" :class="statusMeta[s.status]?.c">{{ statusMeta[s.status]?.t }}</span><span v-if="lifeBadge(s)" class="badge ml-1" :class="lifeBadge(s).c">{{ lifeBadge(s).t }}</span></td>
               <td class="px-3 py-2.5">
                 <button class="inline-flex flex-col items-start gap-0.5 rounded px-1.5 py-1 text-left hover:bg-brand-50" title="실사 상세 보기" @click="openLocation(s)">
@@ -316,21 +316,21 @@ function resetFilters() {
                   <span v-if="s.lastAuditDiff" class="text-[10px]" :class="s.lastAuditDiff < 0 ? 'text-rose-500' : 'text-emerald-600'">{{ s.lastAuditDiff > 0 ? '+' : '' }}{{ s.lastAuditDiff }}</span>
                 </button>
               </td>
-              <td class="hidden px-3 py-2.5 text-right text-xs text-slate-400 lg:table-cell">+{{ s.totalIn || 0 }} / -{{ s.totalOut || 0 }}</td>
+              <td class="px-3 py-2.5 text-right text-xs text-slate-400">+{{ s.totalIn || 0 }} / -{{ s.totalOut || 0 }}</td>
             </tr>
           </tbody>
           <tfoot v-if="showTotal" class="border-t-2 border-slate-200 bg-slate-50 text-sm font-bold">
             <tr>
               <td class="px-3 py-3 text-slate-600">합계 · {{ stats.skuCount.toLocaleString() }} SKU</td>
-              <td class="hidden md:table-cell"></td>
-              <td class="hidden sm:table-cell"></td>
+              <td class=""></td>
+              <td class=""></td>
               <td class="px-3 py-3 text-right text-brand-700">{{ stats.totalQty.toLocaleString() }}개</td>
-              <td class="hidden px-3 py-3 text-right text-slate-500 md:table-cell">평균 {{ Math.round(Number(avgPrice)).toLocaleString() }}원</td>
-              <td class="hidden px-3 py-3 text-right text-brand-700 md:table-cell">{{ Number(totalValue).toLocaleString() }}원</td>
-              <td class="hidden sm:table-cell"></td>
+              <td class="px-3 py-3 text-right text-slate-500">평균 {{ Math.round(Number(avgPrice)).toLocaleString() }}원</td>
+              <td class="px-3 py-3 text-right text-brand-700">{{ Number(totalValue).toLocaleString() }}원</td>
+              <td class=""></td>
               <td></td>
               <td></td>
-              <td class="hidden lg:table-cell"></td>
+              <td class=""></td>
             </tr>
           </tfoot>
         </table>

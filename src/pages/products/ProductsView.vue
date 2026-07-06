@@ -215,13 +215,13 @@ async function remove(p) {
       <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
       <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">등록된 상품이 없습니다.</div>
-      <table v-else class="w-full text-sm">
+      <table v-else class="w-full min-w-[860px] text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
             <th class="px-4 py-2.5 font-semibold">상품코드</th>
             <th class="px-4 py-2.5 font-semibold">상품명</th>
-            <th class="hidden px-4 py-2.5 font-semibold md:table-cell">기준정보 경로</th>
-            <th class="hidden px-4 py-2.5 font-semibold lg:table-cell">제조사</th>
+            <th class="px-4 py-2.5 font-semibold">기준정보 경로</th>
+            <th class="px-4 py-2.5 font-semibold">제조사</th>
             <th class="px-4 py-2.5 text-right font-semibold">관리</th>
           </tr>
         </thead>
@@ -237,8 +237,8 @@ async function remove(p) {
                 </div>
               </div>
             </td>
-            <td class="hidden px-4 py-3 text-xs text-slate-500 md:table-cell">{{ p.pathLabel || '—' }}</td>
-            <td class="hidden px-4 py-3 text-slate-500 lg:table-cell">{{ p.maker || '—' }}</td>
+            <td class="px-4 py-3 text-xs text-slate-500">{{ p.pathLabel || '—' }}</td>
+            <td class="px-4 py-3 text-slate-500">{{ p.maker || '—' }}</td>
             <td class="px-4 py-3 text-right">
               <button class="btn-ghost btn-sm mr-1" @click="openEdit(p)">수정</button>
               <button class="btn-ghost btn-sm text-rose-600" @click="remove(p)">삭제</button>

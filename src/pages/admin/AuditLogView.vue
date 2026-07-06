@@ -121,9 +121,9 @@ const { paged, page, pageSize, sizes, total, totalPages } = usePagination(logs, 
             <th class="px-3 py-2.5 font-semibold">작업</th>
             <th class="px-3 py-2.5 font-semibold">대상</th>
             <th class="px-3 py-2.5 font-semibold">상품/SKU명</th>
-            <th class="hidden px-3 py-2.5 font-semibold lg:table-cell">변경내용(전→후)</th>
+            <th class="px-3 py-2.5 font-semibold">변경내용(전→후)</th>
             <th class="px-3 py-2.5 font-semibold">변경자</th>
-            <th class="hidden px-3 py-2.5 font-semibold md:table-cell">IP</th>
+            <th class="px-3 py-2.5 font-semibold">IP</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
@@ -133,7 +133,7 @@ const { paged, page, pageSize, sizes, total, totalPages } = usePagination(logs, 
             <td class="px-3 py-2.5"><span class="badge" :class="actionMeta[l.action] || 'bg-slate-100 text-slate-500'">{{ l.action }}</span></td>
             <td class="px-3 py-2.5"><span class="font-mono text-xs text-slate-500">{{ l.label || '—' }}</span></td>
             <td class="px-3 py-2.5 text-slate-700">{{ l.name || '—' }}</td>
-            <td class="hidden px-3 py-2.5 text-xs text-slate-500 lg:table-cell">
+            <td class="px-3 py-2.5 text-xs text-slate-500">
               <span v-if="l.beforeValue || l.afterValue">
                 <span class="text-slate-400">{{ l.beforeValue || '—' }}</span>
                 <span class="mx-1 text-slate-300">→</span>
@@ -142,7 +142,7 @@ const { paged, page, pageSize, sizes, total, totalPages } = usePagination(logs, 
               <span v-else class="text-slate-300">—</span>
             </td>
             <td class="whitespace-nowrap px-3 py-2.5 text-slate-600">{{ l.byName || l.name || '(알수없음)' }}</td>
-            <td class="hidden whitespace-nowrap px-3 py-2.5 font-mono text-xs text-slate-400 md:table-cell">{{ l.ip || '—' }}</td>
+            <td class="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-slate-400">{{ l.ip || '—' }}</td>
           </tr>
         </tbody>
       </table>
