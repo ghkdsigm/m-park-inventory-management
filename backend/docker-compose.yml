@@ -28,6 +28,7 @@ services:
       mysql:
         condition: service_healthy
     environment:
+      TZ: Asia/Seoul
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/mpark_wms?serverTimezone=Asia/Seoul&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
       DB_USER: mpark
       DB_PASSWORD: mpark

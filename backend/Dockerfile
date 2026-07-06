@@ -12,4 +12,4 @@ COPY --from=build /app/build/libs/*.jar app.jar
 # → /app/uploads 에 Railway 볼륨을 마운트하면: 기존 이미지 표시 + 새 업로드 영구 보존 둘 다 됨.
 COPY uploads /seed/uploads
 EXPOSE 8080
-ENTRYPOINT ["/bin/sh","-c","mkdir -p /app/uploads && cp -rn /seed/uploads/. /app/uploads/ 2>/dev/null || true; exec java -jar /app/app.jar"]
+ENTRYPOINT ["/bin/sh","-c","mkdir -p /app/uploads && cp -rn /seed/uploads/. /app/uploads/ 2>/dev/null || true; exec java -Duser.timezone=Asia/Seoul -jar /app/app.jar"]
