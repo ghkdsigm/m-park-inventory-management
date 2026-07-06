@@ -1,14 +1,36 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { skus } from '@/services/db'
+import { lifecycleStatus, daysUntil, fmtDate } from '@/utils/date'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import BaseModal from '@/components/ui/BaseModal.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const drawer = ref(false)
 const confirm = ref(null)
+
+/* 알림(재고 부족/품절 + 교체 임박/초과) */
+const alertModal = ref(false)
+const summary = ref({ lowCount: 0, outCount: 0, lifeSoon: 0, lifeOver: 0, lowList: [], lifeList: [] })
+const alertCount = computed(() =>
+  Number(summary.value.lowCount || 0) + Number(summary.value.outCount || 0) +
+  Number(summary.value.lifeSoon || 0) + Number(summary.value.lifeOver || 0)
+)
+const lifeRows = computed(() =>
+  (summary.value.lifeList || []).map((s) => ({ ...s, _st: lifecycleStatus(s.nextReplaceAt), _d: daysUntil(s.nextReplaceAt) }))
+)
+async function loadAlerts() {
+  if (!auth.isLoggedIn) return
+  try { summary.value = await skus.dashboardSummary() } catch (e) { /* 무시 */ }
+}
+function openAlerts() { alertModal.value = true; loadAlerts() }
+function goto(name) { alertModal.value = false; router.push({ name }) }
+onMounted(loadAlerts)
+watch(() => route.name, loadAlerts) // 화면 이동 시 갱신(입출고 후 반영)
 
 // 전체 네비게이션 정의 (group 으로 묶음)
 const allNav = computed(() => [
@@ -119,10 +141,14 @@ async function doLogout() {
       <div class="border-t border-slate-100 p-3">
         <div class="mb-2 flex items-center gap-2 px-2">
           <div class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-600">{{ auth.displayName.charAt(0).toUpperCase() }}</div>
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
             <p class="truncate text-xs font-semibold text-slate-700">{{ auth.displayName }}</p>
             <p class="text-[11px]" :class="auth.isAdmin ? 'text-brand-600' : 'text-slate-400'">{{ auth.isAdmin ? '관리자' : '일반 사용자' }}</p>
           </div>
+          <button class="relative shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="알림" @click="openAlerts">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0" /></svg>
+            <span v-if="alertCount" class="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white">{{ alertCount > 99 ? '99+' : alertCount }}</span>
+          </button>
         </div>
         <button class="btn-ghost w-full btn-sm" @click="doLogout">로그아웃</button>
       </div>
@@ -183,10 +209,56 @@ async function doLogout() {
               </RouterLink>
             </div>
           </div>
+          <button class="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600" @click="drawer = false; openAlerts()">
+            🔔 알림
+            <span v-if="alertCount" class="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">{{ alertCount > 99 ? '99+' : alertCount }}</span>
+          </button>
           <button class="btn-ghost mt-2 w-full" @click="doLogout">로그아웃</button>
         </div>
       </div>
     </Transition>
+
+    <!-- 알림 상세 -->
+    <BaseModal v-model="alertModal" title="알림" size="md">
+      <div v-if="!alertCount" class="py-8 text-center text-sm text-slate-400">알림이 없습니다 👍</div>
+      <div v-else class="space-y-4">
+        <div class="grid grid-cols-4 gap-2 text-center">
+          <div class="rounded-lg bg-amber-50 py-2"><p class="text-[11px] text-amber-600">재고부족</p><p class="text-lg font-bold text-amber-700">{{ summary.lowCount }}</p></div>
+          <div class="rounded-lg bg-rose-50 py-2"><p class="text-[11px] text-rose-600">품절</p><p class="text-lg font-bold text-rose-700">{{ summary.outCount }}</p></div>
+          <div class="rounded-lg bg-amber-50 py-2"><p class="text-[11px] text-amber-600">교체임박</p><p class="text-lg font-bold text-amber-700">{{ summary.lifeSoon }}</p></div>
+          <div class="rounded-lg bg-rose-50 py-2"><p class="text-[11px] text-rose-600">교체초과</p><p class="text-lg font-bold text-rose-700">{{ summary.lifeOver }}</p></div>
+        </div>
+
+        <div>
+          <div class="mb-1 flex items-center justify-between">
+            <h4 class="text-sm font-bold text-slate-700">재고 부족 · 품절</h4>
+            <button class="text-xs text-brand-600" @click="goto('status')">전체보기</button>
+          </div>
+          <div v-if="!summary.lowList?.length" class="py-3 text-center text-xs text-slate-300">해당 없음</div>
+          <ul v-else class="divide-y divide-slate-50 text-sm">
+            <li v-for="s in summary.lowList" :key="s.stockId || s.skuId" class="flex items-center justify-between py-1.5">
+              <span class="min-w-0"><span class="font-mono text-xs text-brand-600">{{ s.code }}</span> <span class="text-slate-700">{{ s.productName }}</span></span>
+              <span class="badge shrink-0" :class="s.qty <= 0 ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'">{{ s.qty }}개</span>
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="mb-1 flex items-center justify-between">
+            <h4 class="text-sm font-bold text-slate-700">교체 임박 · 초과</h4>
+            <button class="text-xs text-brand-600" @click="goto('lifecycle')">전체보기</button>
+          </div>
+          <div v-if="!lifeRows.length" class="py-3 text-center text-xs text-slate-300">해당 없음</div>
+          <ul v-else class="divide-y divide-slate-50 text-sm">
+            <li v-for="s in lifeRows" :key="s.stockId || s.skuId" class="flex items-center justify-between py-1.5">
+              <span class="min-w-0"><span class="font-mono text-xs text-brand-600">{{ s.code }}</span> <span class="text-slate-700">{{ s.productName }}</span> <span class="text-xs text-slate-400">{{ fmtDate(s.nextReplaceAt) || '-' }}</span></span>
+              <span class="badge shrink-0" :class="s._st === 'over' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'">{{ s._st === 'over' ? -s._d + '일 초과' : 'D-' + s._d }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <template #footer><button class="btn-primary" @click="alertModal = false">닫기</button></template>
+    </BaseModal>
   </div>
 </template>
 
