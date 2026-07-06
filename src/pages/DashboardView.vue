@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { skus, products, recentMovements, getDailyStats, getDailyStatsRange, movementsByDate, auditTopUsers, topProductsBySku, topChangedSkus } from '@/services/db'
+import { skus, products, complexes, recentMovements, getDailyStats, getDailyStatsRange, movementsByDate, auditTopUsers, topProductsBySku, topChangedSkus } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -23,6 +23,12 @@ const topSkus = ref([])
 const byComplex = ref([])
 const daily = ref([])
 const stockStat = ref({ total: 0, normal: 0, low: 0, out: 0 })
+
+/* ===== 단지 탭 필터 ===== */
+const complexList = ref([])
+const selectedComplex = ref('') // '' = 전체
+const summaryLowList = ref([]) // 전체 기준 부족/품절(대시보드 요약)
+const complexTabs = computed(() => [{ id: '', name: '전체' }, ...complexList.value.map((c) => ({ id: c.id, name: c.name }))])
 
 /* ===== 입출고 달력 조회 ===== */
 const _now = new Date()
@@ -88,8 +94,9 @@ async function loadDayMoves() {
   dayMovesLoading.value = true
   try {
     const rows = await movementsByDate(selectedDate.value, 300)
-    // 백엔드가 date 필터 미지원이어도 선택일로 한 번 더 거름
-    dayMoves.value = rows.filter((m) => (m.type === 'in' || m.type === 'out') && fmtDate(m.at) === selectedDate.value)
+    const cid = selectedComplex.value
+    // 백엔드 date 필터 미지원 대비 선택일로 한 번 더 거르고, 단지 탭이면 그 단지만
+    dayMoves.value = rows.filter((m) => (m.type === 'in' || m.type === 'out') && fmtDate(m.at) === selectedDate.value && (!cid || m.complexId === cid))
   } catch (e) { dayMoves.value = [] } finally { dayMovesLoading.value = false }
 }
 watch(selectedDate, loadDayMoves)
@@ -97,14 +104,30 @@ watch(selectedDate, loadDayMoves)
 const typeLabel = { in: '입고', out: '출고', adjust: '조정', audit: '실사' }
 const typeColor = { in: 'bg-emerald-500', out: 'bg-sky-500', adjust: 'bg-amber-500', audit: 'bg-violet-500' }
 
+// 선택 단지에 따라 재고집계/부족·품절/최근이동/선택일 목록 갱신
+async function loadComplexData() {
+  const cid = selectedComplex.value
+  try {
+    const pg = await skus.page({ complexId: cid, pageSize: 1 })
+    stockStat.value = { total: pg.total, normal: Math.max(0, pg.total - pg.lowCount - pg.outCount), low: pg.lowCount, out: pg.outCount }
+    stat.value = { ...stat.value, totalQty: pg.totalQty, low: pg.lowCount, out: pg.outCount }
+    if (cid) {
+      const r = await skus.page({ complexId: cid, sort: 'qtyAsc', pageSize: 30 })
+      lowList.value = r.rows.filter((s) => s.status === 'low' || s.status === 'out').slice(0, 6)
+    } else {
+      lowList.value = summaryLowList.value
+    }
+    const mv = await recentMovements(cid ? 60 : 8)
+    moves.value = (cid ? mv.filter((m) => m.complexId === cid) : mv).slice(0, 8)
+  } catch (e) { /* 무시 */ }
+  await loadDayMoves()
+}
+watch(selectedComplex, loadComplexData)
+
 onMounted(async () => {
   try {
-    const [sum, mv] = await Promise.all([
-      skus.dashboardSummary(),
-      recentMovements(8),
-    ])
-    await loadMonth()
-    loadDayMoves()
+    const [sum, cx] = await Promise.all([skus.dashboardSummary(), complexes.list()])
+    complexList.value = cx || []
     stat.value = {
       complexes: sum.complexCount,
       products: sum.productCount,
@@ -113,18 +136,19 @@ onMounted(async () => {
       low: sum.lowCount,
       out: sum.outCount,
     }
-    lowList.value = sum.lowList
-    moves.value = mv
+    summaryLowList.value = sum.lowList
     lifeStat.value = { soon: sum.lifeSoon, over: sum.lifeOver }
     lifeList.value = sum.lifeList.map((s) => ({ ...s, _st: lifecycleStatus(s.nextReplaceAt), _d: daysUntil(s.nextReplaceAt) }))
 
-    // 차트 데이터 (재고상태 / 단지별 / 일별 추이)
+    // 차트 데이터 (단지별 / 일별 추이) — 전체 기준
     try {
-      const [pg, gc, ds] = await Promise.all([skus.page({ pageSize: 1 }), skus.groupByComplex({}), getDailyStats(7)])
-      stockStat.value = { total: pg.total, normal: Math.max(0, pg.total - pg.lowCount - pg.outCount), low: pg.lowCount, out: pg.outCount }
+      const [gc, ds] = await Promise.all([skus.groupByComplex({}), getDailyStats(7)])
       byComplex.value = gc
       daily.value = ds || []
     } catch (e) { /* 차트 데이터 실패는 치명적 아님 */ }
+
+    await loadMonth()
+    await loadComplexData()
 
     // 관리자 통계 (admin 전용)
     if (auth.isAdmin) {
@@ -212,6 +236,17 @@ async function openProductDetail(productId) {
           <p class="text-2xl font-extrabold" :class="c.warn ? 'text-rose-500' : 'text-slate-800'">{{ c.value }}</p>
           <p class="text-xs text-slate-400">{{ c.label }}</p>
         </button>
+      </div>
+
+      <!-- 단지 탭 (전체 + 단지별) -->
+      <div class="mt-6 flex flex-wrap items-center gap-2 border-b border-slate-100 pb-2">
+        <button
+          v-for="t in complexTabs"
+          :key="t.id"
+          class="rounded-full px-4 py-1.5 text-sm font-medium transition"
+          :class="selectedComplex === t.id ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+          @click="selectedComplex = t.id"
+        >{{ t.name }}</button>
       </div>
 
       <!-- 인포그래픽 차트 -->
