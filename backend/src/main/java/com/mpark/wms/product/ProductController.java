@@ -1,5 +1,6 @@
 package com.mpark.wms.product;
 
+import com.mpark.wms.product.ProductDtos.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +16,9 @@ public class ProductController {
 
     @GetMapping
     public List<Product> list() { return service.list(); }
+
+    @PostMapping("/manage-page")
+    public ProductPageResult managePage(@RequestBody ProductFilter f) { return service.managePage(f); }
 
     @GetMapping("/{id}")
     public Product get(@PathVariable String id) { return service.get(id); }

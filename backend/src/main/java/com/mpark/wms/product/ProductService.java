@@ -3,6 +3,7 @@ package com.mpark.wms.product;
 import com.mpark.wms.audit.AuditService;
 import com.mpark.wms.common.ApiException;
 import com.mpark.wms.common.code.CodeGenerator;
+import com.mpark.wms.product.ProductDtos.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,10 +20,16 @@ public class ProductService {
     private final ProductRepository repo;
     private final CodeGenerator codeGenerator;
     private final AuditService auditService;
+    private final ProductQueryRepository queryRepo;
 
     @Transactional(readOnly = true)
     public List<Product> list() {
         return repo.findAllByOrderByCreatedAtDesc();
+    }
+
+    @Transactional(readOnly = true)
+    public ProductPageResult managePage(ProductFilter f) {
+        return queryRepo.managePage(f);
     }
 
     @Transactional(readOnly = true)

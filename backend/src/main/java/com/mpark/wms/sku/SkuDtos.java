@@ -54,6 +54,9 @@ public final class SkuDtos {
     /** pageBySku() 반환: SKU 집계행 + 총 SKU 수 */
     public record SkuAggPageResult(List<SkuAggRow> rows, long total) {}
 
+    /** managePage() 반환: SKU(변형) 엔티티 목록 + 총 개수 (SKU관리 서버 페이징, 재고 무관) */
+    public record SkuListPageResult(List<Sku> rows, long total) {}
+
     /** 단지별 묶기 한 행 */
     public record ComplexGroupRow(String complexName, long skuCount, long totalQty, long lowCount, long outCount) {}
 

@@ -4,7 +4,6 @@ import { skus, products, categories, productCodes, productDetails } from '@/serv
 import { makeQrBatch } from '@/services/qr'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
-import { usePagination } from '@/composables/usePagination'
 import Pager from '@/components/ui/Pager.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
@@ -20,7 +19,8 @@ const { busy: saving, run } = useBusy()
 const confirm = ref(null)
 
 const loading = ref(true)
-const allRows = ref([]) // SKU(변형) 전체
+const rows = ref([]) // 현재 페이지 SKU(변형)
+const total = ref(0)
 const productList = ref([])
 const categoryList = ref([])
 const productCodeList = ref([])
@@ -58,25 +58,32 @@ function resetFilters() {
   fColor.value = ''; fRelease.value = ''; fProduction.value = ''; priceMin.value = ''; priceMax.value = ''
 }
 
-// 클라이언트 필터 + 페이징
-const filtered = computed(() => allRows.value.filter((s) => {
-  if (fCategory.value && s.categoryId !== fCategory.value) return false
-  if (fProductCode.value && s.productCodeId !== fProductCode.value) return false
-  if (fProductDetail.value && s.productDetailId !== fProductDetail.value) return false
-  if (fProduct.value && s.productId !== fProduct.value) return false
-  if (fColor.value && s.color !== fColor.value) return false
-  if (fRelease.value && String(s.releaseYear) !== String(fRelease.value)) return false
-  if (fProduction.value && String(s.productionYear) !== String(fProduction.value)) return false
-  if (priceMin.value !== '' && Number(s.price) < Number(priceMin.value)) return false
-  if (priceMax.value !== '' && Number(s.price) > Number(priceMax.value)) return false
-  if (search.value) {
-    const q = search.value.toLowerCase()
-    return [s.code, s.productName, s.spec, s.color, s.purpose, s.pathLabel].some((v) => (v || '').toLowerCase().includes(q))
+// 서버 페이징
+const sizes = [10, 30, 50]
+const page = ref(1)
+const pageSize = ref(10)
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+function curFilters() {
+  return {
+    categoryId: fCategory.value, productCodeId: fProductCode.value, productDetailId: fProductDetail.value,
+    productId: fProduct.value, color: fColor.value, releaseYear: fRelease.value, productionYear: fProduction.value,
+    priceMin: priceMin.value, priceMax: priceMax.value, search: search.value.trim(),
   }
-  return true
-}))
-const { paged, page, pageSize, sizes, total, totalPages } = usePagination(filtered)
-watch([fCategory, fProductCode, fProductDetail, fProduct, fColor, fRelease, fProduction, priceMin, priceMax, search], () => { page.value = 1 })
+}
+async function fetchPage() {
+  loading.value = true
+  try {
+    const r = await skus.managePage({ ...curFilters(), page: page.value, pageSize: pageSize.value })
+    rows.value = r.rows
+    total.value = r.total
+  } catch (e) { toast.error('불러오기 실패: ' + (e.message || e.code)) } finally { loading.value = false }
+}
+// 필터/페이지크기 변경 → 1페이지부터 재조회, 페이지 이동 → 해당 페이지
+watch([fCategory, fProductCode, fProductDetail, fProduct, fColor, fRelease, fProduction, priceMin, priceMax], () => { page.value = 1; fetchPage() })
+watch(pageSize, () => { page.value = 1; fetchPage() })
+watch(page, fetchPage)
+let searchTimer = null
+watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; fetchPage() }, 350) })
 
 const printSheet = ref([])
 const printing = ref(false)
@@ -94,9 +101,8 @@ async function loadMasters() {
   } catch (e) { /* 옵션 로드 실패 무시 */ }
 }
 async function load() {
-  loading.value = true
   await loadMasters()
-  try { allRows.value = await skus.list() } catch (e) { toast.error('불러오기 실패: ' + (e.message || e.code)) } finally { loading.value = false }
+  await fetchPage()
 }
 onMounted(load)
 
@@ -234,10 +240,10 @@ async function remove(s) {
 }
 
 /* ---- 선택/출력 ---- */
-const allChecked = computed(() => paged.value.length > 0 && paged.value.every((s) => selected.value.has(s.id)))
+const allChecked = computed(() => rows.value.length > 0 && rows.value.every((s) => selected.value.has(s.id)))
 function toggleAll() {
-  if (allChecked.value) paged.value.forEach((s) => selected.value.delete(s.id))
-  else paged.value.forEach((s) => selected.value.add(s.id))
+  if (allChecked.value) rows.value.forEach((s) => selected.value.delete(s.id))
+  else rows.value.forEach((s) => selected.value.add(s.id))
   selected.value = new Set(selected.value)
 }
 function toggle(id) { selected.value.has(id) ? selected.value.delete(id) : selected.value.add(id); selected.value = new Set(selected.value) }
@@ -293,7 +299,7 @@ async function printSelected() {
     <div class="card no-print">
       <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
-      <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">등록된 SKU가 없습니다.</div>
+      <div v-else-if="!rows.length" class="p-10 text-center text-sm text-slate-400">등록된 SKU가 없습니다.</div>
       <table v-else class="w-full min-w-[920px] text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
@@ -310,7 +316,7 @@ async function printSelected() {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="s in paged" :key="s.id" class="hover:bg-slate-50/60" :class="selected.has(s.id) ? 'bg-brand-50/40' : ''">
+          <tr v-for="s in rows" :key="s.id" class="hover:bg-slate-50/60" :class="selected.has(s.id) ? 'bg-brand-50/40' : ''">
             <td class="px-3 py-2.5"><input type="checkbox" class="rounded border-slate-300" :checked="selected.has(s.id)" @change="toggle(s.id)" /></td>
             <td class="cursor-pointer px-3 py-2.5" title="상세 보기" @click="openDetail(s)"><span class="badge bg-brand-50 font-mono text-brand-700 hover:bg-brand-100">{{ s.code }}</span></td>
             <td class="cursor-pointer px-3 py-2.5" title="상세 보기" @click="openDetail(s)">
@@ -337,7 +343,7 @@ async function printSelected() {
         </tbody>
       </table>
       </div>
-      <Pager v-if="filtered.length" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
+      <Pager v-if="total" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
 
     <!-- 인쇄 라벨 시트 -->

@@ -3,7 +3,6 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { products, categories, productCodes, productDetails } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
-import { usePagination } from '@/composables/usePagination'
 import Pager from '@/components/ui/Pager.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
@@ -31,16 +30,12 @@ const search = ref('')
 // 필터 기본값 '' → 셀렉트 "전체 …" 가 기본 선택되도록
 const filterSel = reactive(Object.fromEntries(CHAIN.map((c) => [c.col, ''])))
 
+async function loadMasters() {
+  try { await Promise.all(CHAIN.map(async (c) => (data[c.col] = await c.board.list()))) } catch (e) { /* 옵션 로드 실패 무시 */ }
+}
 async function load() {
-  loading.value = true
-  try {
-    list.value = await products.list()
-    await Promise.all(CHAIN.map(async (c) => (data[c.col] = await c.board.list())))
-  } catch (e) {
-    toast.error('불러오기 실패: ' + (e.message || e.code))
-  } finally {
-    loading.value = false
-  }
+  await loadMasters()
+  await fetchPage()
 }
 onMounted(load)
 
@@ -54,17 +49,27 @@ function options(idx, sel) {
   return all.filter((d) => d[prev.idField] === prevId)
 }
 
-const filtered = computed(() =>
-  list.value.filter((p) => {
-    for (const c of CHAIN) if (filterSel[c.col] && p[c.idField] !== filterSel[c.col]) return false
-    if (search.value) {
-      const q = search.value.toLowerCase()
-      return [p.name, p.maker, p.barcode, p.pathLabel].some((v) => (v || '').toLowerCase().includes(q))
-    }
-    return true
-  })
-)
-const { paged, page, pageSize, sizes, total, totalPages } = usePagination(filtered)
+// 서버 페이징
+const sizes = [10, 30, 50]
+const page = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+function curFilters() {
+  return {
+    categoryId: filterSel.categories, productCodeId: filterSel.productCodes, productDetailId: filterSel.productDetails,
+    search: search.value.trim(),
+  }
+}
+async function fetchPage() {
+  loading.value = true
+  try {
+    const r = await products.managePage({ ...curFilters(), page: page.value, pageSize: pageSize.value })
+    list.value = r.rows
+    total.value = r.total
+  } catch (e) { toast.error('불러오기 실패: ' + (e.message || e.code)) } finally { loading.value = false }
+}
+// 상위 필터 변경 → 하위 무효 선택 정리 + 1페이지부터 재조회
 watch(
   () => CHAIN.map((c) => filterSel[c.col]).join('|'),
   () => {
@@ -72,8 +77,14 @@ watch(
       if (i === 0) return
       if (filterSel[c.col] && !options(i, filterSel).find((o) => o.id === filterSel[c.col])) filterSel[c.col] = ''
     })
+    page.value = 1
+    fetchPage()
   }
 )
+let searchTimer = null
+watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; fetchPage() }, 350) })
+watch(pageSize, () => { page.value = 1; fetchPage() })
+watch(page, fetchPage)
 
 /* ---- 생성/수정 ---- */
 const modal = ref(false)
@@ -214,7 +225,7 @@ async function remove(p) {
     <div class="card">
       <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
-      <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">등록된 상품이 없습니다.</div>
+      <div v-else-if="!list.length" class="p-10 text-center text-sm text-slate-400">등록된 상품이 없습니다.</div>
       <table v-else class="w-full min-w-[860px] text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
@@ -226,7 +237,7 @@ async function remove(p) {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="p in paged" :key="p.id" class="hover:bg-slate-50/60">
+          <tr v-for="p in list" :key="p.id" class="hover:bg-slate-50/60">
             <td class="px-4 py-3"><span class="badge bg-brand-50 font-mono text-brand-700">{{ p.code }}</span></td>
             <td class="px-4 py-3">
               <div class="flex items-center gap-3">
@@ -247,7 +258,7 @@ async function remove(p) {
         </tbody>
       </table>
       </div>
-      <Pager v-if="filtered.length" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
+      <Pager v-if="total" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
     </div>
 
     <BaseModal v-model="modal" :title="editing ? '상품 수정' : '상품 등록'" size="lg">

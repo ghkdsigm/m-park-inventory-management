@@ -54,6 +54,9 @@ public class SkuService {
     public SkuPageResult page(SkuFilter f) { return queryRepo.page(f); }
 
     @Transactional(readOnly = true)
+    public SkuListPageResult managePage(SkuFilter f) { return queryRepo.managePage(f); }
+
+    @Transactional(readOnly = true)
     public SkuAggPageResult pageBySku(SkuFilter f) { return queryRepo.pageBySku(f); }
 
     @Transactional(readOnly = true)

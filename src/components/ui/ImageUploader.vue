@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { uploadImage, deleteImageByUrl } from '@/services/storage'
-import { NO_IMAGE } from '@/utils/image'
+import { NO_IMAGE, compressImage } from '@/utils/image'
 import { useToast } from '@/composables/useToast'
 
 const props = defineProps({
@@ -25,7 +25,8 @@ async function onFile(e) {
   uploading.value = true
   try {
     const old = props.modelValue
-    const { url } = await uploadImage(file, props.prefix)
+    const compressed = await compressImage(file) // 업로드 전 리사이즈/압축
+    const { url } = await uploadImage(compressed, props.prefix)
     emit('update:modelValue', url)
     if (old) deleteImageByUrl(old) // 교체 시 이전 파일 정리
     toast.success('이미지 업로드 완료')
@@ -55,7 +56,7 @@ function remove() {
         {{ modelValue ? '이미지 변경' : '이미지 업로드' }}
       </button>
       <button v-if="modelValue" type="button" class="btn-ghost btn-sm text-rose-600" :disabled="uploading" @click="remove">삭제</button>
-      <p class="text-[11px] text-slate-400">JPG/PNG · 자동 압축됨</p>
+      <p class="text-[11px] text-slate-400">JPG/PNG · 업로드 시 자동 리사이즈(최대 1280px)</p>
     </div>
   </div>
 </template>

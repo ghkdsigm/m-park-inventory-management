@@ -60,6 +60,33 @@ public class SkuQueryRepository {
         return w.toString();
     }
 
+    /** SKU관리 서버 페이징 — Sku(변형) 테이블 직접 조회(재고 유무 무관). 재고 없는 SKU도 포함. */
+    public SkuListPageResult managePage(SkuFilter f) {
+        Map<String, Object> p = new HashMap<>();
+        StringBuilder w = new StringBuilder(" from Sku sk where 1=1 ");
+        if (nb(f.categoryId()))      { w.append(" and sk.categoryId = :categoryId ");           p.put("categoryId", f.categoryId()); }
+        if (nb(f.productCodeId()))   { w.append(" and sk.productCodeId = :productCodeId ");      p.put("productCodeId", f.productCodeId()); }
+        if (nb(f.productDetailId())) { w.append(" and sk.productDetailId = :productDetailId ");  p.put("productDetailId", f.productDetailId()); }
+        if (nb(f.productId()))       { w.append(" and sk.productId = :productId ");              p.put("productId", f.productId()); }
+        if (nb(f.color()))           { w.append(" and sk.color = :color ");                     p.put("color", f.color()); }
+        if (nb(f.releaseYear()))     { w.append(" and sk.releaseYear = :releaseYear ");         p.put("releaseYear", f.releaseYear()); }
+        if (nb(f.productionYear()))  { w.append(" and sk.productionYear = :productionYear ");   p.put("productionYear", f.productionYear()); }
+        if (f.priceMin() != null)    { w.append(" and sk.price >= :priceMin ");                 p.put("priceMin", f.priceMin()); }
+        if (f.priceMax() != null)    { w.append(" and sk.price <= :priceMax ");                 p.put("priceMax", f.priceMax()); }
+        if (Boolean.TRUE.equals(f.lifecycleOnly())) { w.append(" and sk.lifecycleEnabled = true "); }
+        if (nb(f.search())) {
+            w.append(" and (sk.code like :q or sk.productName like :q or sk.spec like :q or sk.color like :q or sk.purpose like :q or sk.pathLabel like :q) ");
+            p.put("q", "%" + f.search() + "%");
+        }
+        String where = w.toString();
+        long total = bindAll(em.createQuery("select count(sk) " + where, Long.class), p).getSingleResult();
+        int page = f.page() == null || f.page() < 1 ? 1 : f.page();
+        int size = f.pageSize() == null || f.pageSize() < 1 ? 10 : f.pageSize();
+        List<Sku> rows = bindAll(em.createQuery("select sk " + where + " order by sk.createdAt desc", Sku.class), p)
+                .setFirstResult((page - 1) * size).setMaxResults(size).getResultList();
+        return new SkuListPageResult(rows, total);
+    }
+
     private String orderBy(String sort) {
         if (sort == null) sort = "recent";
         return switch (sort) {

@@ -22,3 +22,37 @@ export function resolveImage(sku, product = null) {
 export function resolveProductImage(product) {
   return product?.mainImageUrl || NO_IMAGE
 }
+
+/**
+ * 업로드 전 클라이언트 리사이즈/압축 — 큰 사진(휴대폰 수 MB)을 목록/상세에 충분한 크기로 줄여
+ * 저장 용량·목록 로딩·대역폭 비용을 줄인다. GIF/SVG 는 원본 유지.
+ * @param {File} file
+ * @param {{maxDim?:number, quality?:number, skipUnder?:number}} opts
+ * @returns {Promise<File>}
+ */
+export async function compressImage(file, { maxDim = 1280, quality = 0.82, skipUnder = 300 * 1024 } = {}) {
+  try {
+    if (!file || !file.type?.startsWith('image/')) return file
+    if (file.type === 'image/gif' || file.type === 'image/svg+xml') return file // 애니메이션/벡터 보존
+    const dataUrl = await new Promise((res, rej) => {
+      const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file)
+    })
+    const img = await new Promise((res, rej) => {
+      const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = dataUrl
+    })
+    const bigSide = Math.max(img.width, img.height)
+    if (bigSide <= maxDim && file.size <= skipUnder) return file // 이미 충분히 작음 → 그대로
+    const scale = Math.min(1, maxDim / bigSide)
+    const w = Math.round(img.width * scale), h = Math.round(img.height * scale)
+    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h) // 투명 PNG → JPEG 변환 시 흰 배경
+    ctx.drawImage(img, 0, 0, w, h)
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', quality))
+    if (!blob || blob.size >= file.size) return file // 오히려 커지면 원본 사용
+    const name = (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg'
+    return new File([blob], name, { type: 'image/jpeg', lastModified: file.lastModified })
+  } catch (e) {
+    return file // 실패 시 원본 업로드 (안전)
+  }
+}

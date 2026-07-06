@@ -36,6 +36,9 @@ public class SkuController {
     @PostMapping("/page")
     public SkuPageResult page(@RequestBody SkuFilter filter) { return service.page(filter); }
 
+    @PostMapping("/manage-page")
+    public SkuListPageResult managePage(@RequestBody SkuFilter filter) { return service.managePage(filter); }
+
     @PostMapping("/page-by-sku")
     public SkuAggPageResult pageBySku(@RequestBody SkuFilter filter) { return service.pageBySku(filter); }
 

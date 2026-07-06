@@ -60,6 +60,18 @@ export const storageLocations = {
 /* ============================= 상품 ============================= */
 export const products = {
   list: () => api.get('/products'),
+  /** 상품관리 서버 페이징 */
+  async managePage(filters = {}) {
+    const r = await api.post('/products/manage-page', {
+      categoryId: filters.categoryId || null,
+      productCodeId: filters.productCodeId || null,
+      productDetailId: filters.productDetailId || null,
+      search: filters.search || null,
+      page: filters.page || 1,
+      pageSize: filters.pageSize || 30,
+    })
+    return { rows: r?.rows || [], total: r?.total || 0 }
+  },
   get: (id) => api.get(`/products/${id}`),
   create: (data) => api.post('/products', data),
   update: (id, data) => api.put(`/products/${id}`, data),
@@ -120,6 +132,25 @@ export const skus = {
       priceMin: numOrNull(filters.priceMin),
       priceMax: numOrNull(filters.priceMax),
       sort: filters.sort || 'moved',
+      page: filters.page || 1,
+      pageSize: filters.pageSize || 30,
+    })
+    return { rows: r?.rows || [], total: r?.total || 0 }
+  },
+  /** SKU관리 서버 페이징 (재고 무관, 변형 목록). */
+  async managePage(filters = {}) {
+    const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
+    const r = await api.post('/skus/manage-page', {
+      categoryId: filters.categoryId || null,
+      productCodeId: filters.productCodeId || null,
+      productDetailId: filters.productDetailId || null,
+      productId: filters.productId || null,
+      search: filters.search || null,
+      color: filters.color || null,
+      releaseYear: filters.releaseYear || null,
+      productionYear: filters.productionYear || null,
+      priceMin: numOrNull(filters.priceMin),
+      priceMax: numOrNull(filters.priceMax),
       page: filters.page || 1,
       pageSize: filters.pageSize || 30,
     })
