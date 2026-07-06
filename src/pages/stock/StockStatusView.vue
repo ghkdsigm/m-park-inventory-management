@@ -55,6 +55,7 @@ const groups = ref([])
 const total = ref(0)
 const totalQty = ref(0)
 const totalValue = ref(0)
+const avgPrice = ref(0)
 const lowCount = ref(0)
 const outCount = ref(0)
 
@@ -124,6 +125,7 @@ async function fetchPage() {
       total.value = r.total
       totalQty.value = r.totalQty
       totalValue.value = r.totalValue
+      avgPrice.value = r.avgPrice
       lowCount.value = r.lowCount
       outCount.value = r.outCount
     }
@@ -316,7 +318,7 @@ function resetFilters() {
               <td class="hidden md:table-cell"></td>
               <td class="hidden sm:table-cell"></td>
               <td class="px-3 py-3 text-right text-brand-700">{{ stats.totalQty.toLocaleString() }}개</td>
-              <td class="hidden md:table-cell"></td>
+              <td class="hidden px-3 py-3 text-right text-slate-500 md:table-cell">평균 {{ Math.round(Number(avgPrice)).toLocaleString() }}원</td>
               <td class="hidden px-3 py-3 text-right text-brand-700 md:table-cell">{{ Number(totalValue).toLocaleString() }}원</td>
               <td class="hidden sm:table-cell"></td>
               <td></td>
