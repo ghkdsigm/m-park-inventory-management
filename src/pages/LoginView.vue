@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import { setAutoLogin, getAutoLogin } from '@/supabase'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -14,6 +15,16 @@ const email = ref('')
 const password = ref('')
 const displayName = ref('')
 const loading = ref(false)
+
+// 아이디 저장 / 자동 로그인
+const EMAIL_KEY = 'mpark.savedEmail'
+const rememberId = ref(true)
+const autoLogin = ref(true)
+try {
+  const e = localStorage.getItem(EMAIL_KEY)
+  if (e) { email.value = e; rememberId.value = true } else { rememberId.value = false }
+  autoLogin.value = getAutoLogin()
+} catch (e) { /* ignore */ }
 
 // Supabase 인증 에러 메시지(영문) → 한글 매핑
 function krError(e) {
@@ -35,6 +46,10 @@ async function submit() {
     toast.error('이메일과 비밀번호를 입력하세요.')
     return
   }
+  setAutoLogin(autoLogin.value)
+  try {
+    if (rememberId.value) localStorage.setItem(EMAIL_KEY, em); else localStorage.removeItem(EMAIL_KEY)
+  } catch (e) { /* ignore */ }
   loading.value = true
   try {
     if (mode.value === 'login') {
@@ -93,6 +108,10 @@ async function submit() {
           <div>
             <label class="label">비밀번호</label>
             <input v-model="password" type="password" class="input" placeholder="••••••••" autocomplete="current-password" />
+          </div>
+          <div class="flex items-center gap-4 pt-0.5 text-sm text-slate-600">
+            <label class="flex cursor-pointer items-center gap-1.5"><input v-model="rememberId" type="checkbox" class="h-4 w-4 rounded border-slate-300" /> 아이디 저장</label>
+            <label class="flex cursor-pointer items-center gap-1.5"><input v-model="autoLogin" type="checkbox" class="h-4 w-4 rounded border-slate-300" /> 자동 로그인</label>
           </div>
           <button class="btn-primary mt-2 w-full" :disabled="loading">
             {{ loading ? '처리 중…' : mode === 'login' ? '로그인' : '가입하기' }}

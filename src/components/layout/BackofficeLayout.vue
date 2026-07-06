@@ -2,11 +2,13 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const drawer = ref(false)
+const confirm = ref(null)
 
 // 전체 네비게이션 정의 (group 으로 묶음)
 const allNav = computed(() => [
@@ -80,6 +82,8 @@ const icons = {
 }
 
 async function doLogout() {
+  const ok = await confirm.value?.ask({ title: '로그아웃', message: '로그아웃하시겠습니까?', confirmText: '로그아웃' })
+  if (!ok) return
   await auth.logout()
   router.push({ name: 'login' })
 }
@@ -87,6 +91,7 @@ async function doLogout() {
 
 <template>
   <div class="flex h-full bg-slate-100">
+    <ConfirmDialog ref="confirm" />
     <!-- PC 사이드바 -->
     <aside class="no-print hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
       <div class="flex items-center gap-2 px-5 py-4">

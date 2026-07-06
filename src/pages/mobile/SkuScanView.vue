@@ -143,6 +143,8 @@ async function doLogin() {
   catch (e) { toast.error(krError(e)) } finally { loginLoading.value = false }
 }
 async function doLogout() {
+  const ok = await confirm.value?.ask({ title: '로그아웃', message: '로그아웃하시겠습니까?', confirmText: '로그아웃' })
+  if (!ok) return
   await auth.logout(); sku.value = null; product.value = null; stockRows.value = []; movements.value = []
 }
 
@@ -310,7 +312,7 @@ const fmtTime = fmtDateTime
         <form class="card space-y-3 p-5" @submit.prevent="doLogin">
           <div><label class="label">이메일</label><input v-model="loginEmail" type="email" class="input" autocomplete="username" /></div>
           <div><label class="label">비밀번호</label><input v-model="loginPw" type="password" class="input" autocomplete="current-password" /></div>
-          <div class="flex items-center justify-between pt-0.5 text-sm text-slate-600">
+          <div class="flex items-center gap-4 pt-0.5 text-sm text-slate-600">
             <label class="flex cursor-pointer items-center gap-1.5"><input v-model="rememberId" type="checkbox" class="h-4 w-4 rounded border-slate-300" /> 아이디저장</label>
             <label class="flex cursor-pointer items-center gap-1.5"><input v-model="autoLogin" type="checkbox" class="h-4 w-4 rounded border-slate-300" /> 자동로그인</label>
           </div>
