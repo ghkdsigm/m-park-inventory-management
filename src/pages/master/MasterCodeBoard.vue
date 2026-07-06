@@ -25,7 +25,7 @@ const META = {
 }
 
 const key = computed(() => route.meta.masterKey)
-const meta = computed(() => META[key.value])
+const meta = computed(() => META[key.value] || null) // 라우트 전환 중 key 가 잠깐 undefined 일 수 있음
 
 // 단지만 코드 직접 입력, 나머지는 자동 생성
 const PREFIX = { categories: 'CTG', productCodes: 'PC', productDetails: 'PCD' }
@@ -34,6 +34,7 @@ const samplePrefix = computed(() => PREFIX[key.value] || '')
 
 // 루트→직속부모 순서의 조상 컬렉션 체인
 const chain = computed(() => {
+  if (!meta.value) return []
   const arr = []
   let p = meta.value.parent
   while (p) {
@@ -55,6 +56,7 @@ watch(
 )
 
 async function load() {
+  if (!meta.value) return // 라우트 전환 중(masterKey 없음)에는 로드 스킵
   loading.value = true
   try {
     ownList.value = await meta.value.board.list()
@@ -71,6 +73,7 @@ async function load() {
 }
 onMounted(load)
 watch(key, () => {
+  if (!meta.value) return // 다른 메뉴로 나가는 중이면 아무것도 하지 않음
   Object.keys(filterSel).forEach((k) => delete filterSel[k])
   chain.value.forEach((c) => (filterSel[c] = '')) // 새 단계 필터도 "전체" 기본값
   load()
@@ -205,7 +208,7 @@ async function remove(item) {
 </script>
 
 <template>
-  <div>
+  <div v-if="meta">
     <PageHeader :title="meta.label + '관리'" :subtitle="meta.sub">
       <AppSelect v-model="pageSize" class="w-auto"><option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option></AppSelect>
       <button class="btn-primary" @click="openCreate">+ {{ meta.label }} 추가</button>
