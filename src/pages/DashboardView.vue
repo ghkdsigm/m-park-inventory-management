@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { skus, recentMovements, getDailyStats, getDailyStatsRange, movementsByDate, auditTopUsers, topProductsBySku, topChangedSkus } from '@/services/db'
+import { skus, products, recentMovements, getDailyStats, getDailyStatsRange, movementsByDate, auditTopUsers, topProductsBySku, topChangedSkus } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -177,16 +177,20 @@ const dailyChart = computed(() => {
 
 const fmtTime = fmtDateTime
 
-/* ===== 변경 많은 SKU 상세 팝업 ===== */
-const skuModal = ref(false)
-const skuDetail = ref(null)
-const skuLoading = ref(false)
-async function openSkuDetail(rowId) {
-  if (!rowId) return
-  skuModal.value = true
-  skuLoading.value = true
-  skuDetail.value = null
-  try { skuDetail.value = await skus.get(rowId) } catch (e) { skuDetail.value = null } finally { skuLoading.value = false }
+/* ===== 상세 팝업 (SKU / 상품 겸용) ===== */
+const detailModal = ref(false)
+const detailKind = ref('sku') // 'sku' | 'product'
+const detail = ref(null)
+const detailLoading = ref(false)
+async function openSkuDetail(skuId) {
+  if (!skuId) return
+  detailKind.value = 'sku'; detailModal.value = true; detailLoading.value = true; detail.value = null
+  try { detail.value = await skus.get(skuId) } catch (e) { detail.value = null } finally { detailLoading.value = false }
+}
+async function openProductDetail(productId) {
+  if (!productId) return
+  detailKind.value = 'product'; detailModal.value = true; detailLoading.value = true; detail.value = null
+  try { detail.value = await products.get(productId) } catch (e) { detail.value = null } finally { detailLoading.value = false }
 }
 </script>
 
@@ -267,8 +271,8 @@ async function openSkuDetail(rowId) {
           <div v-else class="flex items-end gap-2">
             <div v-for="d in dailyChart" :key="d.date" class="flex flex-1 flex-col items-center gap-1">
               <div class="flex flex-col items-center text-[9px] font-semibold leading-tight">
-                <span v-if="d.inQty" class="text-emerald-600">+{{ d.inQty }}</span>
-                <span v-if="d.outQty" class="text-sky-600">-{{ d.outQty }}</span>
+                <span v-if="d.inQty" class="text-emerald-600">+{{ d.inQty.toLocaleString() }}</span>
+                <span v-if="d.outQty" class="text-sky-600">-{{ d.outQty.toLocaleString() }}</span>
                 <span v-if="!d.inQty && !d.outQty" class="text-slate-300">0</span>
               </div>
               <div class="flex h-24 w-full items-end justify-center gap-0.5">
@@ -324,15 +328,15 @@ async function openSkuDetail(rowId) {
               <div class="flex items-center gap-3 rounded-lg bg-emerald-50 px-4 py-3">
                 <span class="badge bg-emerald-500 text-white">입고</span>
                 <div class="flex flex-1 items-baseline justify-around">
-                  <span class="text-sm text-emerald-700">건수 <b class="text-lg">{{ selectedStats?.inCount || 0 }}</b></span>
-                  <span class="text-sm text-emerald-700">수량 <b class="text-lg">+{{ selectedStats?.inQty || 0 }}</b></span>
+                  <span class="text-sm text-emerald-700">건수 <b class="text-lg">{{ (selectedStats?.inCount || 0).toLocaleString() }}</b></span>
+                  <span class="text-sm text-emerald-700">수량 <b class="text-lg">+{{ (selectedStats?.inQty || 0).toLocaleString() }}</b></span>
                 </div>
               </div>
               <div class="flex items-center gap-3 rounded-lg bg-sky-50 px-4 py-3">
                 <span class="badge bg-sky-500 text-white">출고</span>
                 <div class="flex flex-1 items-baseline justify-around">
-                  <span class="text-sm text-sky-700">건수 <b class="text-lg">{{ selectedStats?.outCount || 0 }}</b></span>
-                  <span class="text-sm text-sky-700">수량 <b class="text-lg">-{{ selectedStats?.outQty || 0 }}</b></span>
+                  <span class="text-sm text-sky-700">건수 <b class="text-lg">{{ (selectedStats?.outCount || 0).toLocaleString() }}</b></span>
+                  <span class="text-sm text-sky-700">수량 <b class="text-lg">-{{ (selectedStats?.outQty || 0).toLocaleString() }}</b></span>
                 </div>
               </div>
             </div>
@@ -356,7 +360,7 @@ async function openSkuDetail(rowId) {
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-50">
-                    <tr v-for="m in dayMoves" :key="m.id" :class="m.voided ? 'text-slate-300 line-through' : ''">
+                    <tr v-for="m in dayMoves" :key="m.id" class="cursor-pointer hover:bg-slate-50" :class="m.voided ? 'text-slate-300 line-through' : ''" @click="openSkuDetail(m.skuId)">
                       <td class="py-1.5 pr-2"><span class="badge text-[10px] text-white" :class="m.type === 'in' ? 'bg-emerald-500' : 'bg-sky-500'">{{ typeLabel[m.type] }}</span></td>
                       <td class="py-1.5 pr-2"><span class="font-mono text-[11px] text-slate-400">{{ m.skuCode }}</span> <span class="text-slate-700">{{ m.productName }}</span></td>
                       <td class="py-1.5 pr-2 text-slate-600">{{ m.handler || m.byName || '-' }}</td>
@@ -402,7 +406,7 @@ async function openSkuDetail(rowId) {
           </div>
           <div v-if="!lowList.length" class="py-6 text-center text-sm text-slate-300">부족/품절 SKU가 없습니다 👍</div>
           <ul v-else class="divide-y divide-slate-50 text-sm">
-            <li v-for="s in lowList" :key="s.id" class="flex items-center justify-between py-2">
+            <li v-for="s in lowList" :key="s.stockId" class="flex cursor-pointer items-center justify-between rounded-md px-1 py-2 hover:bg-slate-50" title="상품 상세" @click="openSkuDetail(s.skuId)">
               <div class="min-w-0">
                 <p class="truncate font-medium text-slate-700"><span class="font-mono text-xs text-brand-600">{{ s.code }}</span> {{ s.productName }}</p>
                 <p class="truncate text-xs text-slate-400">{{ s.pathLabel }}</p>
@@ -417,7 +421,7 @@ async function openSkuDetail(rowId) {
           <h3 class="mb-3 text-sm font-bold text-slate-700">최근 재고 보관 위치 이동</h3>
           <div v-if="!moves.length" class="py-6 text-center text-sm text-slate-300">아직 이력이 없습니다.</div>
           <ul v-else class="divide-y divide-slate-50 text-sm">
-            <li v-for="m in moves" :key="m.id" class="flex items-center justify-between py-2">
+            <li v-for="m in moves" :key="m.id" class="flex cursor-pointer items-center justify-between rounded-md px-1 py-2 hover:bg-slate-50" title="상품 상세" @click="openSkuDetail(m.skuId)">
               <div class="flex min-w-0 items-center gap-2">
                 <span class="badge text-[10px] text-white" :class="typeColor[m.type]">{{ typeLabel[m.type] }}</span>
                 <span class="truncate"><span class="font-mono text-xs text-slate-500">{{ m.skuCode }}</span> <span class="text-slate-600">{{ m.productName }}</span></span>
@@ -444,9 +448,11 @@ async function openSkuDetail(rowId) {
           <h3 class="mb-3 text-sm font-bold text-slate-700">SKU 많은 상품 TOP20</h3>
           <div v-if="!topProds.length" class="py-6 text-center text-sm text-slate-300">데이터 없음</div>
           <ol v-else class="space-y-1.5 text-sm">
-            <li v-for="(p, i) in topProds" :key="i" class="flex items-center justify-between">
-              <span class="flex min-w-0 items-center gap-2"><span class="w-5 shrink-0 text-right font-bold text-brand-500">{{ i + 1 }}</span> <span class="truncate text-slate-700">{{ p.productName }}</span></span>
-              <span class="badge shrink-0 bg-slate-100 text-slate-600">{{ p.skuCount }} SKU</span>
+            <li v-for="(p, i) in topProds" :key="i">
+              <button class="flex w-full items-center justify-between gap-2 rounded-md px-1 py-1 text-left hover:bg-slate-50" title="상품 상세" @click="openProductDetail(p.productId)">
+                <span class="flex min-w-0 items-center gap-2"><span class="w-5 shrink-0 text-right font-bold text-brand-500">{{ i + 1 }}</span> <span class="truncate text-slate-700">{{ p.productName }}</span></span>
+                <span class="badge shrink-0 bg-slate-100 text-slate-600">{{ p.skuCount }} SKU</span>
+              </button>
             </li>
           </ol>
         </div>
@@ -483,29 +489,44 @@ async function openSkuDetail(rowId) {
       </div>
     </template>
 
-    <!-- 변경 많은 SKU 상세 -->
-    <BaseModal v-model="skuModal" title="SKU 상세" size="md">
-      <div v-if="skuLoading" class="py-8 text-center text-sm text-slate-400">불러오는 중…</div>
-      <div v-else-if="!skuDetail" class="py-8 text-center text-sm text-slate-400">정보를 불러올 수 없습니다.</div>
-      <div v-else class="space-y-3">
+    <!-- 상세 (SKU / 상품) -->
+    <BaseModal v-model="detailModal" :title="detailKind === 'product' ? '상품 상세' : 'SKU 상세'" size="md">
+      <div v-if="detailLoading" class="py-8 text-center text-sm text-slate-400">불러오는 중…</div>
+      <div v-else-if="!detail" class="py-8 text-center text-sm text-slate-400">정보를 불러올 수 없습니다.</div>
+      <!-- SKU -->
+      <div v-else-if="detailKind === 'sku'" class="space-y-3">
         <div class="flex gap-4">
-          <img :src="resolveImage(skuDetail)" class="h-24 w-24 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="" />
+          <img :src="resolveImage(detail)" class="h-24 w-24 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="" />
           <div class="min-w-0">
-            <span class="badge bg-brand-50 font-mono text-brand-700">{{ skuDetail.code }}</span>
-            <p class="mt-1 font-bold text-slate-800">{{ skuDetail.productName }}<span v-if="specText(skuDetail)" class="text-slate-400"> · {{ specText(skuDetail) }}</span></p>
-            <p class="mt-0.5 text-xs text-slate-400">{{ skuDetail.pathLabel }}</p>
+            <span class="badge bg-brand-50 font-mono text-brand-700">{{ detail.code }}</span>
+            <p class="mt-1 font-bold text-slate-800">{{ detail.productName }}<span v-if="specText(detail)" class="text-slate-400"> · {{ specText(detail) }}</span></p>
+            <p class="mt-0.5 text-xs text-slate-400">{{ detail.pathLabel }}</p>
           </div>
         </div>
         <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-          <div><dt class="text-xs text-slate-400">색상</dt><dd class="text-slate-700">{{ skuDetail.color || '—' }}</dd></div>
-          <div><dt class="text-xs text-slate-400">출시년도</dt><dd class="text-slate-700">{{ skuDetail.releaseYear || '—' }}</dd></div>
-          <div><dt class="text-xs text-slate-400">생산년도</dt><dd class="text-slate-700">{{ skuDetail.productionYear || '—' }}</dd></div>
-          <div><dt class="text-xs text-slate-400">구매목적</dt><dd class="text-slate-700">{{ skuDetail.purpose || '—' }}</dd></div>
-          <div><dt class="text-xs text-slate-400">표준단가</dt><dd class="font-semibold text-slate-800">{{ Number(skuDetail.price || 0).toLocaleString() }}원</dd></div>
-          <div><dt class="text-xs text-slate-400">안전재고</dt><dd class="text-slate-700">{{ skuDetail.safetyStock ?? 0 }}</dd></div>
+          <div><dt class="text-xs text-slate-400">색상</dt><dd class="text-slate-700">{{ detail.color || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">출시년도</dt><dd class="text-slate-700">{{ detail.releaseYear || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">생산년도</dt><dd class="text-slate-700">{{ detail.productionYear || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">구매목적</dt><dd class="text-slate-700">{{ detail.purpose || '—' }}</dd></div>
+          <div><dt class="text-xs text-slate-400">표준단가</dt><dd class="font-semibold text-slate-800">{{ Number(detail.price || 0).toLocaleString() }}원</dd></div>
+          <div><dt class="text-xs text-slate-400">안전재고</dt><dd class="text-slate-700">{{ detail.safetyStock ?? 0 }}</dd></div>
         </dl>
       </div>
-      <template #footer><button class="btn-primary" @click="skuModal = false">닫기</button></template>
+      <!-- 상품 -->
+      <div v-else class="space-y-3">
+        <div class="flex gap-4">
+          <img :src="detail.mainImageUrl || '/no-image.svg'" class="h-24 w-24 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-contain p-1" alt="" />
+          <div class="min-w-0">
+            <span class="badge bg-brand-50 font-mono text-brand-700">{{ detail.code }}</span>
+            <p class="mt-1 font-bold text-slate-800">{{ detail.name }}</p>
+            <p class="mt-0.5 text-xs text-slate-400">{{ detail.pathLabel }}</p>
+          </div>
+        </div>
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+          <div><dt class="text-xs text-slate-400">표준단가</dt><dd class="font-semibold text-slate-800">{{ Number(detail.price || 0).toLocaleString() }}원</dd></div>
+        </dl>
+      </div>
+      <template #footer><button class="btn-primary" @click="detailModal = false">닫기</button></template>
     </BaseModal>
   </div>
 </template>
