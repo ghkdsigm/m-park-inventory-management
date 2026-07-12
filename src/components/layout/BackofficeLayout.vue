@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import AiChatBot from '@/components/AiChatBot.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -92,6 +93,7 @@ async function doLogout() {
 <template>
   <div class="flex h-full bg-slate-100">
     <ConfirmDialog ref="confirm" />
+    <AiChatBot />
     <!-- PC 사이드바 -->
     <aside class="no-print hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
       <div class="flex items-center gap-2 px-5 py-4">

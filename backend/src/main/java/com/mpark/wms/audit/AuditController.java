@@ -30,4 +30,10 @@ public class AuditController {
 
     @GetMapping("/audit/top-changed")
     public List<TopChanged> topChanged(@RequestParam(defaultValue = "10") int limit) { return service.topChangedSkus(limit); }
+
+    @GetMapping("/audit/ai-stats")
+    public AuditDtos.AiStats aiStats(@RequestParam(required = false) String from,
+                                     @RequestParam(required = false) String to) {
+        return service.aiStats(from, to);
+    }
 }
