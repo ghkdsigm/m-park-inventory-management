@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose:*)",
+      "Bash(curl -s http://localhost:8080/api/stocks)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/api/stocks)",
+      "Bash(curl:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiIwNWYwN2FhMi1mN2MwLTQyOWQtOGM1YS1jMGM5NzA4ZmQ5YjkiLCJuYW1lIjoiw6rCtOKCrMOrwqbCrMOsxb7CkCIsInJvbGUiOiJhZG1pbiIsImNhblN0b2NrIjp0cnVlLCJpYXQiOjE3ODM2NTc0MzMsImV4cCI6MTc4NDI2MjIzM30.Zd8jvnUv5EC3z3YCnYLhCdfvmC8qInjXYJKQlqQH_5SvBkGU36apeO9UpBLXNyB2\")",
+      "Bash(npx vite:*)",
+      "Bash(./gradlew compileJava)",
+      "Bash(ls:*)",
+      "Bash(git check-ignore *)",
+      "Bash(docker exec *)",
+      "Bash(node -e ' *)",
+      "Read(//tmp/**)",
+      "Bash(npm install *)"
+    ]
+  }
+}

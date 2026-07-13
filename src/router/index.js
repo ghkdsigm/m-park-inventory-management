@@ -11,6 +11,12 @@ const routes = [
   // 모바일 QR 스캔 대상 (SKU 코드 기준) — 백오피스와 분리된 입/출고 전용 단말.
   // 자체 로그인을 화면 안에서 처리하므로 public (백오피스 /login 으로 튕기지 않음)
   {
+    path: '/s',
+    name: 'scanHome',
+    component: () => import('@/pages/mobile/SkuScanHome.vue'),
+    meta: { public: true },
+  },
+  {
     path: '/s/:code',
     name: 'scan',
     component: () => import('@/pages/mobile/SkuScanView.vue'),

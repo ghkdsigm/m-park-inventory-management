@@ -1,5 +1,7 @@
 package com.mpark.wms.audit;
 
+import java.util.List;
+
 /** 감사 대시보드 집계 DTO (db.js auditTopUsers/topProductsBySku/topChangedSkus 반환형과 일치) */
 public final class AuditDtos {
     private AuditDtos() {}
@@ -9,4 +11,8 @@ public final class AuditDtos {
     public record TopProduct(String productId, String productName, long skuCount) {}
 
     public record TopChanged(String rowId, String label, String productName, long cnt) {}
+
+    /** AI 사용 통계 */
+    public record AiStats(long totalCalls, long inboundProposals, long outboundProposals, List<AiUserStat> byUser) {}
+    public record AiUserStat(String userId, String userName, long callCount, long inboundCount, long outboundCount) {}
 }

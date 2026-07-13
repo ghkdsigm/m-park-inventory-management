@@ -6,6 +6,7 @@ import { skus } from '@/services/db'
 import { lifecycleStatus, daysUntil, fmtDate } from '@/utils/date'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
+import AiChatBot from '@/components/AiChatBot.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -81,6 +82,23 @@ const bottomNav = computed(() => [
   { name: 'menu', label: '메뉴', icon: 'menu', action: () => (drawer.value = true) },
 ])
 
+// AI 챗봇 "빠른 기능 시작" 칩 — 조회는 모두, 입출고/이동은 재고권한자만
+const chatSuggestions = computed(() => {
+  const base = [
+    { label: '📊 전체 재고 현황', text: '전체 재고 현황을 요약해줘' },
+    { label: '⚠️ 부족·품절 재고', text: '안전재고 미만이거나 품절인 SKU를 알려줘' },
+    { label: '🔍 SKU 재고 조회', text: '특정 SKU의 재고와 보관위치를 조회하고 싶어' },
+  ]
+  if (auth.canStock) {
+    base.push(
+      { label: '📥 입고', text: '입고를 진행할게' },
+      { label: '📤 출고', text: '출고를 진행할게' },
+      { label: '🔄 재고이동', text: '재고를 다른 보관위치로 이동할게' },
+    )
+  }
+  return base
+})
+
 const icons = {
   grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
   building: 'M4 21V5a1 1 0 011-1h9a1 1 0 011 1v16M15 9h4a1 1 0 011 1v11M8 8h2M8 12h2M8 16h2',
@@ -114,6 +132,7 @@ async function doLogout() {
 <template>
   <div class="flex h-full bg-slate-100">
     <ConfirmDialog ref="confirm" />
+    <AiChatBot :suggestions="chatSuggestions" />
     <!-- PC 사이드바 -->
     <aside class="no-print hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
       <div class="flex items-center gap-2 px-5 py-4">

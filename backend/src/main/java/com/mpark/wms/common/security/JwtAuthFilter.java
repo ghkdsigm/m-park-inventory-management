@@ -38,4 +38,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
         chain.doFilter(request, response);
     }
+
+    /**
+     * async 디스패치(스트리밍 응답, 예: /api/chat 의 StreamingResponseBody)에서도 이 필터를 실행한다.
+     * OncePerRequestFilter 는 기본적으로 async 디스패치를 건너뛰는데, 그러면 스트리밍 완료 후
+     * 재디스패치 시 SecurityContext 가 비어 인가 검사에서 AccessDeniedException 이 발생하고,
+     * 이미 커밋된 응답의 청크 스트림이 중간에 끊긴다(ERR_INCOMPLETE_CHUNKED_ENCODING).
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
 }

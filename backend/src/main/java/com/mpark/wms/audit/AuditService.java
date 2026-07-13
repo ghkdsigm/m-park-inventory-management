@@ -53,6 +53,25 @@ public class AuditService {
         repo.save(a);
     }
 
+    /**
+     * AI 어시스턴트 사용 기록 — 스트리밍(async) 스레드에서 호출되므로 유저를 명시적으로 받는다.
+     * (async 스레드엔 SecurityContext 가 없어 currentUser 를 못 쓴다.)
+     * ChatService 가 이 빈(프록시)을 통해 호출하므로 @Transactional 이 적용되어 정상 커밋된다.
+     */
+    @Transactional
+    public void logAi(String userId, String userName, String action, String label) {
+        AuditLog a = new AuditLog();
+        a.setModule("AI 어시스턴트");
+        a.setTableName("chat");
+        a.setAction(action);
+        a.setLabel(label != null && label.length() > 255 ? label.substring(0, 255) : label);
+        a.setName("");
+        a.setByUserId(userId);
+        a.setByName(userName == null ? "" : userName);
+        a.setIp(clientIp());
+        repo.save(a);
+    }
+
     private static String trunc(String s) {
         if (s == null) return null;
         return s.length() > 1000 ? s.substring(0, 1000) : s;
@@ -120,6 +139,64 @@ public class AuditService {
         List<TopChanged> out = new ArrayList<>();
         for (Object[] r : rows) out.add(new TopChanged((String) r[0], (String) r[1], (String) r[2], num(r[3])));
         return out;
+    }
+
+    /* ---------- AI 사용 통계 ---------- */
+    @Transactional(readOnly = true)
+    public AuditDtos.AiStats aiStats(String dateFrom, String dateTo) {
+        StringBuilder where = new StringBuilder("a.module = 'AI 어시스턴트'");
+        Map<String, Object> p = new HashMap<>();
+        if (dateFrom != null && !dateFrom.isBlank()) {
+            where.append(" AND a.at >= :from");
+            p.put("from", LocalDate.parse(dateFrom).atStartOfDay());
+        }
+        if (dateTo != null && !dateTo.isBlank()) {
+            where.append(" AND a.at < :to");
+            p.put("to", LocalDate.parse(dateTo).plusDays(1).atStartOfDay());
+        }
+
+        // 전체 집계
+        long total = queryCount("SELECT COUNT(a) FROM AuditLog a WHERE " + where, p);
+        long inbound = queryCount("SELECT COUNT(a) FROM AuditLog a WHERE " + where + " AND a.label LIKE '%AI 입고%'", p);
+        long outbound = queryCount("SELECT COUNT(a) FROM AuditLog a WHERE " + where + " AND a.label LIKE '%AI 출고%'", p);
+
+        // 사용자별
+        List<Object[]> rows = em.createQuery(
+                "SELECT a.byUserId, a.byName, COUNT(a), " +
+                "SUM(CASE WHEN a.label LIKE '%AI 입고%' THEN 1 ELSE 0 END), " +
+                "SUM(CASE WHEN a.label LIKE '%AI 출고%' THEN 1 ELSE 0 END) " +
+                "FROM AuditLog a WHERE " + where +
+                " GROUP BY a.byUserId, a.byName ORDER BY COUNT(a) DESC", Object[].class)
+                .setMaxResults(50).getResultList();
+        // setParameter
+        for (var e : p.entrySet()) {
+            // re-run 을 위해 위 쿼리에 파라미터 적용은 아래에서
+        }
+
+        // 파라미터 바인딩 재수행 — 위 createQuery 에 직접 적용
+        var q = em.createQuery(
+                "SELECT a.byUserId, a.byName, COUNT(a), " +
+                "SUM(CASE WHEN a.label LIKE '%AI 입고%' THEN 1 ELSE 0 END), " +
+                "SUM(CASE WHEN a.label LIKE '%AI 출고%' THEN 1 ELSE 0 END) " +
+                "FROM AuditLog a WHERE " + where +
+                " GROUP BY a.byUserId, a.byName ORDER BY COUNT(a) DESC", Object[].class);
+        p.forEach(q::setParameter);
+        rows = q.setMaxResults(50).getResultList();
+
+        List<AuditDtos.AiUserStat> byUser = new ArrayList<>();
+        for (Object[] r : rows) {
+            byUser.add(new AuditDtos.AiUserStat(
+                    (String) r[0], r[1] == null ? "(알수없음)" : (String) r[1],
+                    num(r[2]), num(r[3]), num(r[4])));
+        }
+        return new AuditDtos.AiStats(total, inbound, outbound, byUser);
+    }
+
+    private long queryCount(String jpql, Map<String, Object> params) {
+        var q = em.createQuery(jpql, Long.class);
+        params.forEach(q::setParameter);
+        Long r = q.getSingleResult();
+        return r == null ? 0 : r;
     }
 
     private static long num(Object o) { return o == null ? 0L : ((Number) o).longValue(); }

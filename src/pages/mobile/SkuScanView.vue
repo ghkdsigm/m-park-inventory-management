@@ -8,6 +8,7 @@ import { useToast } from '@/composables/useToast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
+import AiChatBot from '@/components/AiChatBot.vue'
 import { resolveImage } from '@/utils/image'
 import { lifecycleStatus, daysUntil, fmtDate, fmtDateTime } from '@/utils/date'
 import { specText } from '@/utils/sku'
@@ -191,6 +192,54 @@ const attrLine = computed(() => {
   const s = sku.value
   if (!s) return ''
   return [specText(s), s.color, s.releaseYear && `출시 ${s.releaseYear}`, s.productionYear && `생산 ${s.productionYear}`, s.purpose].filter(Boolean).join(' · ')
+})
+
+/* AI 챗봇 컨텍스트 — 현재 화면의 제품/재고를 챗봇에 주입 */
+const chatContext = computed(() => {
+  const s = sku.value
+  if (!s) return ''
+  const locLabel = (r) => `${[r.complexName, r.locationLabel].filter(Boolean).join(' › ')}${r.storageLocationCode ? ' (' + r.storageLocationCode + ')' : ''}`
+  // 기본 작업 위치: 선택된 재고행 > 재고행이 하나뿐이면 그 행
+  const defaultStock = selectedStock.value || (stockRows.value.length === 1 ? stockRows.value[0] : null)
+  const lines = [
+    '[이용 범위 — 모바일 현장 단말]',
+    '이 화면에서는 오직 "입고"와 "출고"만 처리할 수 있습니다.',
+    '- 재고이동, 재고조정, 재고실사, 재고 현황/이력 조회, 기타 관리 기능은 이 화면에서 지원하지 않습니다.',
+    '  이런 요청을 받으면 정중히 거절하고 "이 화면에서는 입고/출고만 가능합니다. 그 외 작업은 관리자용 웹에서 처리해 주세요." 라고 안내하세요.',
+    '',
+    '[입고 규칙 — 중요]',
+    defaultStock
+      ? '- 이 제품은 이미 보관위치가 지정되어 있습니다. 입고 시 보관위치는 기본으로 아래 "기본 위치"를 사용하고, 사용자에게는 수량과 사유만 물어보세요. 위치를 다시 묻지 마세요.'
+      : '- 이 제품은 아직 보관된 위치가 없습니다. 입고 시 보관위치를 먼저 물어본 뒤 수량, 사유를 수집하세요.',
+    '- 다만 사용자가 "위치 바꿔줘", "다른 곳에 입고", "○○ 창고에 넣어줘" 처럼 위치 변경을 요청하면, 그때만 단지 › 구역 › 상세구역 › 보관위치 선택 과정을 진행하세요.',
+    ...(defaultStock ? [`- 기본 위치: 보관위치ID ${defaultStock.storageLocationId} | ${locLabel(defaultStock)}`] : []),
+    '',
+    '[출고 규칙]',
+    '- 출고는 아래 재고행(위치)을 대상으로 수량, 사유를 수집하고, 사용처(사용처/공용 위치), 요청부서, 요청자, 담당자 등 출고 상세도 안내하여 등록하세요.',
+    defaultStock ? `- 기본 출고 대상: 재고행ID ${defaultStock.stockId} | ${locLabel(defaultStock)} (${defaultStock.qty}개)` : '',
+    '',
+    '현재 사용자가 모바일 상세 화면에서 보고 있는 제품(SKU)입니다.',
+    '사용자가 "이 제품", "해당 제품" 이라고 하거나 제품을 특정하지 않고 입고/출고를 요청하면, 별도 언급이 없는 한 아래 제품을 대상으로 처리하세요.',
+    `- SKU ID: ${s.id}`,
+    `- 코드: ${s.code}`,
+    `- 상품명: ${s.productName}`,
+  ]
+  if (attrLine.value) lines.push(`- 속성: ${attrLine.value}`)
+  lines.push(`- 전체 재고: ${totalQty.value}개`)
+  if (stockRows.value.length) {
+    lines.push('- 위치별 재고(출고 시 재고행ID, 입고 시 보관위치ID 사용):')
+    stockRows.value.forEach((r) => {
+      lines.push(`  · 재고행ID ${r.stockId} | 보관위치ID ${r.storageLocationId} | 위치 ${locLabel(r)} | ${r.qty}개`)
+    })
+  } else {
+    lines.push('- 현재 이 제품의 재고 없음 → 입고 시 보관위치를 물어보세요.')
+  }
+  return lines.filter((l) => l !== null && l !== undefined).join('\n')
+})
+const chatGreeting = computed(() => {
+  const s = sku.value
+  if (!s) return ''
+  return `📦 현재 제품: ${s.code} · ${s.productName}\n"이 제품 입고해줘 / 출고해줘" 처럼 말씀하시면 바로 처리해 드릴게요.`
 })
 const typeLabel = { in: '입고', out: '출고', adjust: '조정', audit: '실사', void: '취소' }
 
@@ -512,5 +561,15 @@ const fmtTime = fmtDateTime
     </Teleport>
 
     <ConfirmDialog ref="confirm" />
+
+    <!-- AI 챗봇 (우측 하단 플로팅) — 로그인 + 제품 로드 후, 현재 제품 컨텍스트 주입 -->
+    <AiChatBot
+      v-if="auth.isLoggedIn && sku"
+      :key="sku.id"
+      :has-bottom-nav="false"
+      :context-prompt="chatContext"
+      :context-greeting="chatGreeting"
+      @completed="load"
+    />
   </div>
 </template>

@@ -37,6 +37,10 @@ app:
   storage:
     dir: ${STORAGE_DIR:./uploads}
     public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:8080/files}
+  ai:
+    api-key: ${OPENAI_API_KEY:}
+    model: ${OPENAI_MODEL:${AI_MODEL:gpt-4o}}
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
 
 logging:
   level:

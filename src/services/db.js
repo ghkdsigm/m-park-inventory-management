@@ -217,6 +217,11 @@ export async function transferStock(payload) {
   })
 }
 
+/** 사진(base64/data URL) → AI 가 찾은 유사 등록제품 후보 리스트 (모바일 "제품 찾아보기") */
+export async function findSimilarProducts(imageBase64) {
+  return api.post('/chat/find-similar', { imageBase64 })
+}
+
 /** 실사 오차 정상처리 — 재고행(stockId) + 사유. 비정상→정상 전환. */
 export async function resolveAudit(stockId, reason = '') {
   return api.post(`/stock/${stockId}/audit-resolve`, { reason: reason || '' })
