@@ -44,6 +44,7 @@ services:
       MINIMAX_MODEL: ${MINIMAX_MODEL:-}
       MINIMAX_VOICE_ID: ${MINIMAX_VOICE_ID:-}
       MINIMAX_BASE_URL: ${MINIMAX_BASE_URL:-}
+      MINIMAX_SPEED: ${MINIMAX_SPEED:-}
     ports:
       - "8080:8080"
     volumes:

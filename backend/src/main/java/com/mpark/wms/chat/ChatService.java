@@ -51,6 +51,8 @@ public class ChatService {
     private String mmModel;
     @Value("${app.minimax.voice-id:Korean_SweetGirl}")
     private String mmVoice;
+    @Value("${app.minimax.speed:1.2}")
+    private String mmSpeedRaw; // 0.5~2.0 (빈 문자열 주입 대비 String 으로 받아 파싱)
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -226,13 +228,17 @@ public class ChatService {
         base = base.replaceAll("/+$", "");
         String t = text.length() > 4000 ? text.substring(0, 4000) : text;
 
+        double speed = 1.2;
+        try { if (mmSpeedRaw != null && !mmSpeedRaw.isBlank()) speed = Double.parseDouble(mmSpeedRaw.trim()); } catch (Exception ignored) {}
+        speed = Math.max(0.5, Math.min(2.0, speed)); // MiniMax 허용 범위로 제한
+
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", (mmModel == null || mmModel.isBlank()) ? "speech-02-hd" : mmModel.trim());
         body.put("text", t);
         body.put("stream", false);
         body.put("language_boost", "Korean");
         body.put("voice_setting", Map.of("voice_id", (mmVoice == null || mmVoice.isBlank()) ? "Korean_SweetGirl" : mmVoice.trim(),
-                "speed", 1.0, "vol", 1.0, "pitch", 0));
+                "speed", speed, "vol", 1.0, "pitch", 0));
         body.put("audio_setting", Map.of("sample_rate", 32000, "bitrate", 128000, "format", "mp3", "channel", 1));
 
         try {

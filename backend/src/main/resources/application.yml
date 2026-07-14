@@ -48,6 +48,7 @@ app:
     base-url: ${MINIMAX_BASE_URL:https://api.minimax.io}
     model: ${MINIMAX_MODEL:speech-02-hd}
     voice-id: ${MINIMAX_VOICE_ID:Korean_SweetGirl}
+    speed: ${MINIMAX_SPEED:1.2}   # 말하기 속도 0.5~2.0 (기본 1.2 = 약간 빠름)
 
 logging:
   level:
