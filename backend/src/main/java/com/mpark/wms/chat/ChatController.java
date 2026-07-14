@@ -35,4 +35,11 @@ public class ChatController {
     public List<Map<String, Object>> findSimilar(@RequestBody Map<String, Object> request) {
         return chatService.findSimilar((String) request.get("imageBase64"));
     }
+
+    /** AI 답변 텍스트 → MiniMax TTS mp3 오디오 (챗봇 음성 출력) */
+    @PostMapping(value = "/tts", produces = "audio/mpeg")
+    public ResponseEntity<byte[]> tts(@RequestBody Map<String, Object> request) {
+        byte[] audio = chatService.tts((String) request.get("text"));
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("audio/mpeg")).body(audio);
+    }
 }

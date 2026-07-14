@@ -26,6 +26,7 @@ const messages = ref([])
 const loading = ref(false)
 const pendingImage = ref(null)
 const isRecording = ref(false)
+const ttsOn = ref(false)
 const messagesEl = ref(null)
 const inputEl = ref(null)
 const fileInput = ref(null)
@@ -44,6 +45,44 @@ function fmt(t) {
     .replace(/\*(?!\s)([^*\n]+?)\*/g, '$1') // *기울임* (불릿 "* "은 제외)
 }
 
+/* ============ 음성 출력 (TTS) — MiniMax 우선, 실패 시 브라우저 음성 폴백 ============ */
+const synth = typeof window !== 'undefined' ? window.speechSynthesis : null
+let currentAudio = null
+
+async function speak(text) {
+  if (!ttsOn.value || !text) return
+  const clean = fmt(text)
+  try {
+    const resp = await fetch(`${BASE}/chat/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ text: clean }),
+    })
+    if (!resp.ok) throw new Error('tts unavailable')
+    const blob = await resp.blob()
+    if (!ttsOn.value) return // 도중에 껐으면 재생 안 함
+    stopSpeak()
+    const url = URL.createObjectURL(blob)
+    currentAudio = new Audio(url)
+    currentAudio.onended = () => { URL.revokeObjectURL(url); currentAudio = null }
+    await currentAudio.play()
+  } catch (_) {
+    browserSpeak(clean) // 폴백: 브라우저 기본 음성(MiniMax 키 미설정/오류 시)
+  }
+}
+function browserSpeak(text) {
+  if (!synth || !text) return
+  try { synth.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'ko-KR'; synth.speak(u) } catch (_) { /* noop */ }
+}
+function stopSpeak() {
+  try { synth?.cancel() } catch (_) { /* noop */ }
+  if (currentAudio) { try { currentAudio.pause() } catch (_) { /* noop */ } currentAudio = null }
+}
+function toggleTts() {
+  ttsOn.value = !ttsOn.value
+  if (!ttsOn.value) stopSpeak()
+}
+
 let msgId = 0
 const newId = () => ++msgId
 
@@ -56,8 +95,8 @@ onMounted(() => {
 })
 
 // 모바일에서 채팅 열면 body 스크롤 방지
-watch(open, (v) => { document.body.style.overflow = v ? 'hidden' : '' })
-onUnmounted(() => { document.body.style.overflow = '' })
+watch(open, (v) => { document.body.style.overflow = v ? 'hidden' : ''; if (!v) stopSpeak() })
+onUnmounted(() => { document.body.style.overflow = ''; stopSpeak() })
 
 function scrollToBottom() {
   nextTick(() => { if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight })
@@ -118,6 +157,7 @@ async function send() {
   if (!text && !image) return
   if (loading.value) return
 
+  stopSpeak() // 새 메시지 보내면 이전 음성 중단
   messages.value.push({ id: newId(), role: 'user', text, image })
   input.value = ''; pendingImage.value = null
   scrollToBottom()
@@ -180,6 +220,7 @@ async function send() {
     assistantMsg.text = '네트워크 오류가 발생했습니다.'
   } finally {
     loading.value = false; scrollToBottom(); focusInput()
+    if (assistantMsg.text) speak(assistantMsg.text) // AI 답변 음성 출력(켜져 있을 때)
   }
 }
 
@@ -230,6 +271,7 @@ function actionMeta(t) {
 function dismissAction(msg) { msg.action = null }
 
 function clearChat() {
+  stopSpeak()
   messages.value = [{ id: newId(), role: 'assistant', text: '대화가 초기화되었습니다. 무엇을 도와드릴까요?' }]
 }
 
@@ -269,6 +311,10 @@ function quickSend(text) {
           <div><p class="text-sm font-semibold text-slate-800">AI 어시스턴트</p><p class="text-[11px] text-slate-400">입출고 도우미</p></div>
         </div>
         <div class="flex items-center gap-0.5">
+          <button @click="toggleTts" class="rounded-lg p-2 transition" :class="ttsOn ? 'bg-brand-50 text-brand-600' : 'text-slate-400 hover:bg-slate-100'" :title="ttsOn ? '음성 답변 끄기' : '음성 답변 켜기'">
+            <svg v-if="ttsOn" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5zM15.5 8.5a5 5 0 010 7M19 5a9 9 0 010 14" /></svg>
+            <svg v-else class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5zM22 9l-6 6M16 9l6 6" /></svg>
+          </button>
           <button @click="clearChat" class="rounded-lg p-2 text-slate-400 hover:bg-slate-100" title="초기화">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 0115.5-6.3L21 8M21 3v5h-5M21 12a9 9 0 01-15.5 6.3L3 16M3 21v-5h5" /></svg>
           </button>

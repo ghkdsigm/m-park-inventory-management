@@ -41,6 +41,17 @@ public class ChatService {
     @Value("${app.ai.base-url:https://api.openai.com/v1}")
     private String baseUrl;
 
+    @Value("${app.minimax.api-key:}")
+    private String mmKey;
+    @Value("${app.minimax.group-id:}")
+    private String mmGroup;
+    @Value("${app.minimax.base-url:https://api.minimaxi.com}")
+    private String mmBase;
+    @Value("${app.minimax.model:speech-02-hd}")
+    private String mmModel;
+    @Value("${app.minimax.voice-id:Korean_SweetGirl}")
+    private String mmVoice;
+
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
@@ -200,6 +211,62 @@ public class ChatService {
         } catch (IOException e) {
             throw new IllegalStateException("AI 서비스 호출 실패: " + e.getMessage());
         }
+    }
+
+    /**
+     * MiniMax(Hailuo) TTS — 텍스트를 mp3 오디오 바이트로 변환. 챗봇 AI 답변 음성 재생용.
+     * 키/GroupId 미설정이면 예외 → 프론트가 브라우저 기본 음성으로 폴백.
+     */
+    public byte[] tts(String text) {
+        if (text == null || text.isBlank()) throw new IllegalArgumentException("읽을 텍스트가 없습니다.");
+        if (mmKey == null || mmKey.isBlank() || mmGroup == null || mmGroup.isBlank())
+            throw new IllegalStateException("MiniMax TTS 미설정: MINIMAX_API_KEY / MINIMAX_GROUP_ID 환경변수를 확인하세요.");
+
+        String base = (mmBase == null || mmBase.isBlank()) ? "https://api.minimax.io" : mmBase.trim();
+        base = base.replaceAll("/+$", "");
+        String t = text.length() > 4000 ? text.substring(0, 4000) : text;
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", (mmModel == null || mmModel.isBlank()) ? "speech-02-hd" : mmModel.trim());
+        body.put("text", t);
+        body.put("stream", false);
+        body.put("language_boost", "Korean");
+        body.put("voice_setting", Map.of("voice_id", (mmVoice == null || mmVoice.isBlank()) ? "Korean_SweetGirl" : mmVoice.trim(),
+                "speed", 1.0, "vol", 1.0, "pitch", 0));
+        body.put("audio_setting", Map.of("sample_rate", 32000, "bitrate", 128000, "format", "mp3", "channel", 1));
+
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(base + "/v1/t2a_v2?GroupId=" + mmGroup))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + mmKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200)
+                throw new IllegalStateException("MiniMax 오류 (" + resp.statusCode() + ")");
+
+            JsonNode root = mapper.readTree(resp.body());
+            int code = root.path("base_resp").path("status_code").asInt(-1);
+            if (code != 0)
+                throw new IllegalStateException("MiniMax TTS 실패: " + root.path("base_resp").path("status_msg").asText("알 수 없는 오류"));
+            String hex = root.path("data").path("audio").asText("");
+            if (hex.isBlank()) throw new IllegalStateException("MiniMax 응답에 오디오가 없습니다.");
+            return hexToBytes(hex);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("요청이 중단되었습니다.");
+        } catch (IOException e) {
+            throw new IllegalStateException("MiniMax 호출 실패: " + e.getMessage());
+        }
+    }
+
+    private static byte[] hexToBytes(String s) {
+        int n = s.length();
+        byte[] out = new byte[n / 2];
+        for (int i = 0; i + 1 < n; i += 2)
+            out[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i + 1), 16));
+        return out;
     }
 
     /** 매칭된 SKU 각각에 현재 보관위치(수량>0) 목록과 총재고를 부착한다. */

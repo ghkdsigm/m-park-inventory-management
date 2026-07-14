@@ -41,6 +41,13 @@ app:
     api-key: ${OPENAI_API_KEY:}
     model: ${OPENAI_MODEL:${AI_MODEL:gpt-4o}}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+  minimax:
+    # MiniMax(Hailuo) TTS(음성 합성). 미설정 시 프론트가 브라우저 기본 음성으로 폴백.
+    api-key: ${MINIMAX_API_KEY:}
+    group-id: ${MINIMAX_GROUP_ID:}
+    base-url: ${MINIMAX_BASE_URL:https://api.minimax.io}
+    model: ${MINIMAX_MODEL:speech-02-hd}
+    voice-id: ${MINIMAX_VOICE_ID:Korean_SweetGirl}
 
 logging:
   level:
