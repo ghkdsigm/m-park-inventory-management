@@ -34,12 +34,26 @@ export const quotes = {
     form.append('file', file, file.name)
     return api.upload('/quotes/upload', form)
   },
+  // 서버 페이징 목록 + 필터
+  async pageList(filters = {}) {
+    const r = await api.get('/quotes/page', {
+      vendor: filters.vendor || null, complex: filters.complex || null, month: filters.month || null,
+      search: filters.search || null, page: filters.page || 1, pageSize: filters.pageSize || 20,
+    })
+    return { rows: r?.rows || [], total: r?.total || 0 }
+  },
+  filterOptions: () => api.get('/quotes/filter-options'),
   // 특정 SKU 의 최근 연결 견적 요약(없으면 null)
   forSku: (skuId) => api.get(`/quotes/for-sku/${skuId}`),
   // SKU 미연결 견적 품목(새 제품 연결 후보)
   unmatched: () => api.get('/quotes/unmatched'),
   // 견적 품목 ↔ SKU 연결/해제
   linkItem: (itemId, skuId) => api.post(`/quotes/items/${itemId}/link`, { skuId }),
+}
+
+/* ===================== AI 사용량(토큰) 모니터링 ===================== */
+export const aiUsage = {
+  summary: (days = 30) => api.get('/ai-usage/summary', { days }),
 }
 
 export const MASTER = {

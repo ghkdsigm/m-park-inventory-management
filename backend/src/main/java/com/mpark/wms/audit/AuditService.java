@@ -110,8 +110,10 @@ public class AuditService {
 
     @Transactional(readOnly = true)
     public List<TopUser> topUsers(int limit) {
+        // 최근 90일로 제한 — 감사로그가 무한 증가해도 전체 스캔 방지(idx_audit_action_at 활용)
         List<Object[]> rows = em.createQuery(
-                "select a.byName, count(a) from AuditLog a where a.action = '생성' group by a.byName order by count(a) desc", Object[].class)
+                "select a.byName, count(a) from AuditLog a where a.action = '생성' and a.at >= :from group by a.byName order by count(a) desc", Object[].class)
+                .setParameter("from", java.time.LocalDateTime.now().minusDays(90))
                 .setMaxResults(limit).getResultList();
         List<TopUser> out = new ArrayList<>();
         for (Object[] r : rows) out.add(new TopUser(r[0] == null ? "(알수없음)" : (String) r[0], num(r[1])));
@@ -133,8 +135,9 @@ public class AuditService {
         // 상품명은 AuditLog 가 아니라 실제 Sku 테이블에서 직접 (항상 정확)
         List<Object[]> rows = em.createQuery(
                 "select sk.id, sk.code, sk.productName, count(a) from AuditLog a, Sku sk " +
-                "where a.tableName = 'skus' and a.rowId = sk.id " +
+                "where a.tableName = 'skus' and a.rowId = sk.id and a.at >= :from " +
                 "group by sk.id, sk.code, sk.productName order by count(a) desc", Object[].class)
+                .setParameter("from", java.time.LocalDateTime.now().minusDays(90))
                 .setMaxResults(limit).getResultList();
         List<TopChanged> out = new ArrayList<>();
         for (Object[] r : rows) out.add(new TopChanged((String) r[0], (String) r[1], (String) r[2], num(r[3])));
@@ -149,6 +152,10 @@ public class AuditService {
         if (dateFrom != null && !dateFrom.isBlank()) {
             where.append(" AND a.at >= :from");
             p.put("from", LocalDate.parse(dateFrom).atStartOfDay());
+        } else {
+            // 날짜 미지정 시 최근 90일로 제한 — 전체 스캔 방지
+            where.append(" AND a.at >= :from");
+            p.put("from", java.time.LocalDateTime.now().minusDays(90));
         }
         if (dateTo != null && !dateTo.isBlank()) {
             where.append(" AND a.at < :to");

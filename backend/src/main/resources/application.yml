@@ -39,7 +39,10 @@ app:
     public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:8080/files}
   ai:
     api-key: ${OPENAI_API_KEY:}
-    model: ${OPENAI_MODEL:${AI_MODEL:gpt-4o}}
+    # 챗봇/사진검색: 저비용 소형 모델(툴 기반이라 충분). 비용 큰 폭 절감.
+    model: ${OPENAI_MODEL:${AI_MODEL:gpt-4o-mini}}
+    # 견적서 추출: 정확도 중요(표 파싱) → 고정확 모델 유지.
+    extract-model: ${OPENAI_EXTRACT_MODEL:gpt-4o}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
   minimax:
     # MiniMax(Hailuo) TTS(음성 합성). 미설정 시 프론트가 브라우저 기본 음성으로 폴백.

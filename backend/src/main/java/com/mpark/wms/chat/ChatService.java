@@ -35,7 +35,7 @@ public class ChatService {
     @Value("${app.ai.api-key:}")
     private String apiKey;
 
-    @Value("${app.ai.model:gpt-4o}")
+    @Value("${app.ai.model:gpt-4o-mini}")
     private String model;
 
     @Value("${app.ai.base-url:https://api.openai.com/v1}")
@@ -62,11 +62,14 @@ public class ChatService {
     private final AuditService auditService;
     private final CurrentUser currentUser;
     private final ChatQueryService queryService;
+    private final com.mpark.wms.usage.AiUsageService usageService;
 
-    public ChatService(AuditService auditService, CurrentUser currentUser, ChatQueryService queryService) {
+    public ChatService(AuditService auditService, CurrentUser currentUser, ChatQueryService queryService,
+                       com.mpark.wms.usage.AiUsageService usageService) {
         this.auditService = auditService;
         this.currentUser = currentUser;
         this.queryService = queryService;
+        this.usageService = usageService;
     }
 
     /* ============================================================
@@ -255,6 +258,13 @@ public class ChatService {
                 throw new IllegalStateException("AI 서비스 오류 (" + resp.statusCode() + ")");
 
             JsonNode root = mapper.readTree(resp.body());
+            try {
+                JsonNode usage = root.path("usage");
+                if (usage.isObject())
+                    usageService.record(currentUser.id(), currentUser.name(), "find_similar", useModel,
+                            usage.path("prompt_tokens").asInt(0), usage.path("completion_tokens").asInt(0),
+                            usage.path("total_tokens").asInt(0), 0);
+            } catch (Exception ignored) {}
             JsonNode args = root.path("choices").path(0).path("message")
                     .path("tool_calls").path(0).path("function").path("arguments");
             if (!args.isTextual()) return null;
@@ -356,6 +366,8 @@ public class ChatService {
                 throw new IllegalStateException("MiniMax TTS 실패: " + root.path("base_resp").path("status_msg").asText("알 수 없는 오류"));
             String hex = root.path("data").path("audio").asText("");
             if (hex.isBlank()) throw new IllegalStateException("MiniMax 응답에 오디오가 없습니다.");
+            try { usageService.record(currentUser.id(), currentUser.name(), "tts",
+                    "minimax:" + (mmModel == null ? "" : mmModel), 0, 0, 0, t.length()); } catch (Exception ignored) {}
             return hexToBytes(hex);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -424,6 +436,7 @@ public class ChatService {
             StringBuilder finalText = new StringBuilder();
             Map<String, Object> finalAction = null;
             String actionLabel = "AI 대화";
+            int promptTokens = 0, completionTokens = 0, totalTokens = 0; // 사용량 누적(라운드 합산)
 
             // 에이전트 루프: 모델이 조회 도구(search_*/stock_overview)를 호출하면 서버가 실행해 결과를 다시 넣고 재호출.
             // 텍스트 답변 또는 propose_action(종료 도구)이 나오면 종료. (무한루프/과금 방지 상한)
@@ -435,6 +448,7 @@ public class ChatService {
                 body.put("messages", apiMessages);
                 body.put("tools", tools);
                 body.put("stream", true);
+                body.put("stream_options", Map.of("include_usage", true)); // 마지막 청크에 usage(토큰) 포함
 
                 HttpRequest req = HttpRequest.newBuilder()
                         .uri(URI.create(useBase + "/chat/completions"))
@@ -474,6 +488,14 @@ public class ChatService {
                         writeEvent(out, Map.of("type", "error", "text",
                                 node.path("error").path("message").asText("알 수 없는 오류")));
                         return;
+                    }
+
+                    // 사용량(토큰) — include_usage 시 마지막 청크(choices 빈 배열)에 usage 포함
+                    JsonNode usageNode = node.path("usage");
+                    if (usageNode.isObject()) {
+                        promptTokens += usageNode.path("prompt_tokens").asInt(0);
+                        completionTokens += usageNode.path("completion_tokens").asInt(0);
+                        totalTokens += usageNode.path("total_tokens").asInt(0);
                     }
 
                     JsonNode delta = node.path("choices").path(0).path("delta");
@@ -564,6 +586,8 @@ public class ChatService {
 
             // 감사로그 기록 (주입된 auditService 프록시 경유 → async 스레드에서도 트랜잭션 정상)
             try { auditService.logAi(userId, userName, "AI 대화", actionLabel); } catch (Exception ignored) {}
+            // AI 사용량(토큰) 기록
+            try { usageService.record(userId, userName, "chat", useModel, promptTokens, completionTokens, totalTokens, 0); } catch (Exception ignored) {}
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

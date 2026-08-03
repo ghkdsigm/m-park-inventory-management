@@ -59,7 +59,7 @@ const qtyDiff = computed(() => (quoteInfo.value ? (Number(qty.value) || 0) - quo
 const purchaseTotal = computed(() => (Number(qty.value) || 0) * (Number(purchasePrice.value) || 0))
 
 const variants = ref([])   // 입고용 SKU(변형) 목록
-const locBySku = ref({})   // skuId → 현재 재고 위치들(재고행)
+const selectedLocs = ref([]) // 선택 SKU의 현재 보관위치(입고 시 참고)
 const rows = ref([])       // 출고/조정/실사용 재고행 목록
 const complexList = ref([])
 const storageLocs = ref([])
@@ -124,13 +124,7 @@ const showUsage = computed(() => op.value === 'out' && !NO_USAGE_REASONS.include
 watch(reason, () => { if (!showUsage.value) { outComplex.value = ''; outZone.value = ''; outSub.value = '' } })
 
 // 재고행 필터/조회
-const filteredVariants = computed(() =>
-  variants.value.filter((v) =>
-    (!fCategory.value || v.categoryId === fCategory.value) &&
-    (!fProductCode.value || v.productCodeId === fProductCode.value) &&
-    (!search.value || (`${v.code} ${v.productName} ${v.spec || ''}`).toLowerCase().includes(search.value.toLowerCase()))
-  )
-)
+const filteredVariants = computed(() => variants.value) // 서버에서 이미 필터/페이징됨
 
 async function loadMasters() {
   try {
@@ -138,23 +132,17 @@ async function loadMasters() {
       await Promise.all([complexes.list(), storageLocations.list(), categories.list(), productCodes.list(), zones.listAll(), subZones.listAll()])
   } catch (e) { /* 무시 */ }
 }
-async function loadVariants() { try { variants.value = await skus.list() } catch (e) { /* */ } }
-async function loadInboundLocations() {
+// 입고 SKU 목록 — 서버 페이징/검색(전체 로드 안 함, 5천개+ 대응)
+async function loadVariants() {
+  loading.value = true
   try {
-    const r = await skus.page({ pageSize: 1000 })
-    const map = {}
-    ;(r.rows || []).forEach((row) => { if (row.qty > 0) (map[row.skuId] ||= []).push(row) })
-    locBySku.value = map
-  } catch (e) { /* 위치 로드 실패 무시 */ }
-}
-function locInfo(s) {
-  const arr = locBySku.value[s.id] || []
-  if (!arr.length) return { text: '재고 없음', muted: true }
-  if (arr.length === 1) {
-    const l = arr[0]
-    return { text: (l.complexName || '') + (l.locationLabel ? ' › ' + l.locationLabel : '') || '위치 미지정', muted: false }
-  }
-  return { text: `여러 위치 (${arr.length}곳)`, muted: false }
+    const r = await skus.managePage({
+      categoryId: fCategory.value, productCodeId: fProductCode.value,
+      search: search.value.trim(), page: page.value, pageSize: pageSize.value,
+    })
+    variants.value = r.rows
+    total.value = r.total
+  } catch (e) { toast.error('불러오기 실패: ' + (e.message || e.code)) } finally { loading.value = false }
 }
 async function fetchRows() {
   loading.value = true
@@ -169,23 +157,25 @@ async function fetchRows() {
 }
 
 async function reload() {
-  selected.value = null; movements.value = []
-  loading.value = true
-  if (isInbound.value) { await loadVariants(); await loadInboundLocations(); loading.value = false }
+  selected.value = null; movements.value = []; selectedLocs.value = []
+  page.value = 1
+  if (isInbound.value) await loadVariants()
   else await fetchRows()
 }
+function reloadList() { if (isInbound.value) loadVariants(); else fetchRows() }
 onMounted(async () => { await loadMasters(); await reload() })
 watch(op, reload)
-watch([filterComplex, fCategory, fProductCode], () => { if (!isInbound.value) { page.value = 1; fetchRows() } })
-watch(pageSize, () => { if (!isInbound.value) { page.value = 1; fetchRows() } })
-watch(page, () => { if (!isInbound.value) fetchRows() })
+watch([filterComplex, fCategory, fProductCode], () => { page.value = 1; reloadList() })
+watch(pageSize, () => { page.value = 1; reloadList() })
+watch(page, reloadList)
 let searchTimer = null
-watch(search, () => { if (!isInbound.value) { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; fetchRows() }, 350) } })
+watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; reloadList() }, 350) })
 
 async function selectItem(x) {
   selected.value = x
   quoteInfo.value = null
   purchasePrice.value = ''
+  selectedLocs.value = []
   qty.value = isSet.value ? (x.qty || 0) : 1
   memo.value = ''; reason.value = ''
   opRid.value = ''
@@ -195,6 +185,10 @@ async function selectItem(x) {
   const skuId = x.skuId || x.id
   movements.value = skuId ? await listMovements(skuId, 6) : []
   if (skuId) { try { quoteInfo.value = await quotes.forSku(skuId) } catch (_) { quoteInfo.value = null } }
+  // 입고: 선택 SKU의 현재 보관위치(재고>0)만 조회해 참고 표시
+  if (isInbound.value && x.id) {
+    try { const r = await skus.page({ skuId: x.id, pageSize: 20 }); selectedLocs.value = (r.rows || []).filter((row) => row.qty > 0) } catch (_) { selectedLocs.value = [] }
+  }
 }
 
 async function submit() {
@@ -285,7 +279,7 @@ async function confirmVoid() {
             <option v-for="p in pcOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
           </AppSelect>
           <input v-model="search" class="input w-full flex-1 sm:w-auto" placeholder="SKU코드/상품명 검색" />
-          <AppSelect v-if="!isInbound" v-model="pageSize" class="w-auto sm:ml-auto">
+          <AppSelect v-model="pageSize" class="w-auto sm:ml-auto">
             <option v-for="n in sizes" :key="n" :value="n">{{ n }}개씩</option>
           </AppSelect>
         </div>
@@ -293,7 +287,7 @@ async function confirmVoid() {
           <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
           <!-- 입고: 변형 SKU 목록 -->
           <template v-if="isInbound">
-            <div v-if="!filteredVariants.length" class="p-10 text-center text-sm text-slate-400">SKU가 없습니다. 먼저 SKU관리에서 등록하세요.</div>
+            <div v-if="!loading && !filteredVariants.length" class="p-10 text-center text-sm text-slate-400">SKU가 없습니다. 먼저 SKU관리에서 등록하세요.</div>
             <button v-for="s in filteredVariants" :key="s.id" class="flex w-full items-center gap-2 border-b border-slate-50 px-4 py-2.5 text-left hover:bg-slate-50"
               :class="selected?.id === s.id ? 'bg-brand-50' : ''" @click="selectItem(s)">
               <img :src="resolveImage(s)" class="h-10 w-10 shrink-0 rounded-lg border border-slate-100 object-cover" alt="" />
@@ -302,15 +296,11 @@ async function confirmVoid() {
                 <span class="ml-1 text-sm font-medium text-slate-700">{{ s.productName }}</span>
                 <p class="truncate text-xs text-slate-400">{{ specText(s) }}</p>
               </div>
-              <div class="w-32 shrink-0 text-right text-xs" :class="locInfo(s).muted ? 'text-slate-300' : 'text-slate-500'">
-                <span class="text-[10px] text-slate-300">현재위치</span>
-                <p class="truncate">📍 {{ locInfo(s).text }}</p>
-              </div>
             </button>
           </template>
           <!-- 출고/조정/실사: 재고행 목록 -->
           <template v-else>
-            <div v-if="!rows.length" class="p-10 text-center text-sm text-slate-400">재고가 없습니다.</div>
+            <div v-if="!loading && !rows.length" class="p-10 text-center text-sm text-slate-400">재고가 없습니다.</div>
             <button v-for="s in rows" :key="s.stockId" class="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-4 py-2.5 text-left hover:bg-slate-50"
               :class="selected?.stockId === s.stockId ? 'bg-brand-50' : ''" @click="selectItem(s)">
               <img :src="resolveImage(s)" class="h-10 w-10 shrink-0 rounded-lg border border-slate-100 object-cover" alt="" />
@@ -323,7 +313,7 @@ async function confirmVoid() {
             </button>
           </template>
         </div>
-        <Pager v-if="!isInbound && total" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
+        <Pager v-if="total" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
       </div>
 
       <!-- 작업 패널 -->
@@ -335,6 +325,12 @@ async function confirmVoid() {
             <p class="font-mono text-lg font-bold text-slate-800">{{ selected.code }}</p>
             <p class="text-sm text-slate-600">{{ selected.productName }} <span v-if="specText(selected)" class="text-slate-400">· {{ specText(selected) }}</span></p>
             <p v-if="!isInbound" class="text-xs text-slate-400">📍 {{ selected.complexName }}<span v-if="selected.locationLabel"> › {{ selected.locationLabel }}</span></p>
+
+            <!-- 입고: 선택 SKU 현재 보관위치 -->
+            <div v-if="isInbound && selectedLocs.length" class="mt-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-500">
+              <span class="text-[10px] text-slate-400">현재 보관위치</span>
+              <p v-for="(l, i) in selectedLocs" :key="i" class="truncate">📍 {{ l.complexName }}<span v-if="l.locationLabel"> › {{ l.locationLabel }}</span> · {{ l.qty }}개</p>
+            </div>
 
             <!-- 최근 연결 견적 -->
             <div v-if="quoteInfo" class="my-4 rounded-lg border border-brand-100 bg-brand-50/50 p-3 text-sm">

@@ -23,7 +23,7 @@ public class QuoteAiService {
 
     @Value("${app.ai.api-key:}")
     private String apiKey;
-    @Value("${app.ai.model:gpt-4o}")
+    @Value("${app.ai.extract-model:gpt-4o}") // 견적 표 파싱 정확도 위해 고정확 모델
     private String model;
     @Value("${app.ai.base-url:https://api.openai.com/v1}")
     private String baseUrl;
@@ -32,6 +32,15 @@ public class QuoteAiService {
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
             .build();
+
+    private final com.mpark.wms.usage.AiUsageService usageService;
+    private final com.mpark.wms.common.security.CurrentUser currentUser;
+
+    public QuoteAiService(com.mpark.wms.usage.AiUsageService usageService,
+                          com.mpark.wms.common.security.CurrentUser currentUser) {
+        this.usageService = usageService;
+        this.currentUser = currentUser;
+    }
 
     /**
      * 견적서 PDF 텍스트를 파싱해 헤더+품목을 담은 JsonNode 를 반환한다.
@@ -131,6 +140,13 @@ public class QuoteAiService {
                 throw new IllegalStateException("AI 서비스 오류 (" + resp.statusCode() + ")");
 
             JsonNode root = mapper.readTree(resp.body());
+            try {
+                JsonNode usage = root.path("usage");
+                if (usage.isObject())
+                    usageService.record(currentUser.id(), currentUser.name(), "quote_extract", useModel,
+                            usage.path("prompt_tokens").asInt(0), usage.path("completion_tokens").asInt(0),
+                            usage.path("total_tokens").asInt(0), 0);
+            } catch (Exception ignored) {}
             JsonNode args = root.path("choices").path(0).path("message")
                     .path("tool_calls").path(0).path("function").path("arguments");
             if (!args.isTextual())

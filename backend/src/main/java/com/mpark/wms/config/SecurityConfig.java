@@ -46,9 +46,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 공개
                         .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
-                        .requestMatchers("/files/**").permitAll()           // 이미지 (Phase 6)
-                        // 관리자 전용 (사용자관리/감사로그)
-                        .requestMatchers("/api/users/**", "/api/audit-logs", "/api/audit/**").hasRole("ADMIN")
+                        .requestMatchers("/files/quotes/**").authenticated() // 견적 PDF(단가 등 민감) — 인증 필요
+                        .requestMatchers("/files/**").permitAll()           // 이미지 등 나머지는 공개
+                        // 관리자 전용 (사용자관리/감사로그/AI사용량)
+                        .requestMatchers("/api/users/**", "/api/audit-logs", "/api/audit/**", "/api/ai-usage/**").hasRole("ADMIN")
                         // SKU 조회용 POST + 입/출고·이동 (세부 권한은 서비스에서 can_stock 으로 검증)
                         // ※ 재고조정/실사(/api/stock/adjust)·audit-resolve 는 여기 없음 → 서비스의 isAdmin() + 기본 규칙으로 관리자 전용 유지
                         .requestMatchers(HttpMethod.POST,

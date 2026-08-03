@@ -26,7 +26,7 @@ const messages = ref([])
 const loading = ref(false)
 const pendingImage = ref(null)
 const isRecording = ref(false)
-const ttsOn = ref(true) // 기본 켜짐(음소거 아님) — AI 답변을 음성으로 읽어줌
+const ttsOn = ref(false) // 기본 꺼짐(비용 절감) — 필요 시 스피커 버튼으로 켬
 const messagesEl = ref(null)
 const inputEl = ref(null)
 const fileInput = ref(null)
@@ -168,10 +168,11 @@ async function send() {
   scrollToBottom()
 
   try {
-    // 대화 이력 구성 (시스템 메시지 제외)
+    // 대화 이력 구성 (시스템 메시지 제외) — 최근 12개만 전송(비용 절감: 대화가 길어도 토큰 일정)
     const history = messages.value
       .filter(m => (m.role === 'user' || m.role === 'assistant') && m.id !== assistantMsg.id)
       .filter(m => m.text || m.image)
+      .slice(-12)
       .map(m => ({
         role: m.role,
         text: m.text || '',

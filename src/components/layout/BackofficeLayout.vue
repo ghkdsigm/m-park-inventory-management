@@ -62,6 +62,7 @@ const allNav = computed(() => [
 
   { name: 'users', label: '사용자관리', icon: 'users', to: { name: 'users' }, group: '설정', admin: true },
   { name: 'audit-log', label: '감사로그', icon: 'shield', to: { name: 'audit-log' }, group: '설정', admin: true },
+  { name: 'ai-usage', label: 'AI 사용량', icon: 'status', to: { name: 'ai-usage' }, group: '설정', admin: true },
 ])
 
 const nav = computed(() => allNav.value.filter((i) => (!i.admin || auth.isAdmin) && (!i.stock || auth.canStock)))

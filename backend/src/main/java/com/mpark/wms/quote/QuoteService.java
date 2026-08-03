@@ -40,6 +40,9 @@ public class QuoteService {
     private final AuditService auditService;
     private final CurrentUser currentUser;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager em;
+
     /* ============ 업로드 → 추출 + 자동추천 (미저장) ============ */
     public QuoteUploadResult upload(MultipartFile file) {
         if (file == null || file.isEmpty()) throw ApiException.badRequest("파일이 비어 있습니다.");
@@ -155,6 +158,63 @@ public class QuoteService {
     public List<Quote> list() {
         return quoteRepo.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
     }
+
+    /** 견적 목록 서버 페이징 + 필터(업체/단지/월/검색). */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> listPaged(String vendor, String complexName, String yearMonth,
+                                                   String search, int page, int pageSize) {
+        StringBuilder w = new StringBuilder(" where 1=1");
+        java.util.Map<String, Object> p = new java.util.HashMap<>();
+        if (nb(vendor)) { w.append(" and q.vendorName = :vendor"); p.put("vendor", vendor); }
+        if (nb(complexName)) { w.append(" and q.complexName = :cx"); p.put("cx", complexName); }
+        if (nb(yearMonth)) {
+            try {
+                LocalDate ms = LocalDate.parse(yearMonth + "-01");
+                w.append(" and q.quoteDate >= :ms and q.quoteDate < :me");
+                p.put("ms", ms); p.put("me", ms.plusMonths(1));
+            } catch (Exception ignored) {}
+        }
+        if (nb(search)) {
+            w.append(" and (lower(q.vendorName) like :s or lower(q.vendorBizNo) like :s)");
+            p.put("s", "%" + search.toLowerCase() + "%");
+        }
+        var countQ = em.createQuery("select count(q) from Quote q" + w, Long.class);
+        p.forEach(countQ::setParameter);
+        long total = countQ.getSingleResult();
+
+        var rowQ = em.createQuery("select q from Quote q" + w + " order by q.createdAt desc", Quote.class);
+        p.forEach(rowQ::setParameter);
+        int size = Math.max(1, Math.min(pageSize, 100));
+        List<Quote> rows = rowQ.setFirstResult(Math.max(0, page - 1) * size).setMaxResults(size).getResultList();
+
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("rows", rows);
+        out.put("total", total);
+        return out;
+    }
+
+    /** 필터 드롭다운용 distinct 값(업체/단지/월). */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> filterOptions() {
+        List<String> vendors = em.createQuery(
+                "select distinct q.vendorName from Quote q where q.vendorName <> '' order by q.vendorName", String.class).getResultList();
+        List<String> complexes = em.createQuery(
+                "select distinct q.complexName from Quote q where q.complexName <> '' order by q.complexName", String.class).getResultList();
+        List<LocalDate> dates = em.createQuery(
+                "select distinct q.quoteDate from Quote q where q.quoteDate is not null order by q.quoteDate desc", LocalDate.class).getResultList();
+        java.util.List<String> months = new java.util.ArrayList<>();
+        for (LocalDate d : dates) {
+            String ym = String.format("%04d-%02d", d.getYear(), d.getMonthValue());
+            if (!months.contains(ym)) months.add(ym);
+        }
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("vendors", vendors);
+        out.put("complexes", complexes);
+        out.put("months", months);
+        return out;
+    }
+
+    private static boolean nb(String s) { return s != null && !s.isBlank(); }
 
     @Transactional(readOnly = true)
     public QuoteDetail get(String id) {

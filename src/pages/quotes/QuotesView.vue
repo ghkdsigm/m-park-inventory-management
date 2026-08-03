@@ -1,6 +1,8 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { quotes, skus, complexes } from '@/services/db'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { quotes, complexes } from '@/services/db'
+import Pager from '@/components/ui/Pager.vue'
+import { getToken } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
 import BaseModal from '@/components/ui/BaseModal.vue'
@@ -15,54 +17,49 @@ const confirm = ref(null)
 
 /* ---------- 목록 ---------- */
 const list = ref([])
-const loading = ref(false)
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
+const loading = ref(true)
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+
+/* ---------- 조회 필터 (월별 / 업체별 / 단지별) — 서버 파라미터 ---------- */
+const fMonth = ref('')
+const fVendor = ref('')
+const fComplex = ref('')
+const options = ref({ vendors: [], complexes: [], months: [] })
+
 async function load() {
   loading.value = true
   try {
-    list.value = await quotes.list()
+    const r = await quotes.pageList({
+      vendor: fVendor.value, complex: fComplex.value, month: fMonth.value,
+      page: page.value, pageSize: pageSize.value,
+    })
+    list.value = r.rows
+    total.value = r.total
   } catch (e) {
     toast.error('목록 조회 실패: ' + (e.message || e.code))
   } finally {
     loading.value = false
   }
 }
+async function loadOptions() {
+  try { options.value = await quotes.filterOptions() } catch (e) { /* 옵션 실패해도 목록은 됨 */ }
+}
+function resetFilters() { fMonth.value = ''; fVendor.value = ''; fComplex.value = ''; page.value = 1; load() }
+watch([fMonth, fVendor, fComplex], () => { page.value = 1; load() })
+watch(page, load)
 
-/* ---------- 조회 필터 (월별 / 업체별 / 현장별) ---------- */
-const fMonth = ref('')
-const fVendor = ref('')
-const fComplex = ref('')
-const monthOptions = computed(() => {
-  const s = new Set()
-  list.value.forEach((q) => { if (q.quoteDate) s.add(String(q.quoteDate).slice(0, 7)) })
-  return [...s].sort().reverse()
-})
-const vendorOptions = computed(() => [...new Set(list.value.map((q) => q.vendorName).filter(Boolean))].sort())
-const complexOptions = computed(() => [...new Set(list.value.map((q) => q.complexName).filter(Boolean))].sort())
-const filtered = computed(() => list.value.filter((q) =>
-  (!fMonth.value || (q.quoteDate && String(q.quoteDate).slice(0, 7) === fMonth.value)) &&
-  (!fVendor.value || q.vendorName === fVendor.value) &&
-  (!fComplex.value || q.complexName === fComplex.value)
-))
-function resetFilters() { fMonth.value = ''; fVendor.value = ''; fComplex.value = '' }
-
-/* ---------- 매칭용 참조 데이터 ---------- */
-const skuOptions = ref([]) // { id, code, productName, spec }
+/* ---------- 매칭용 참조 데이터 (SKU는 전체 로드 안 함 — 피커가 서버검색) ---------- */
 const complexList = ref([])
 async function loadRefs() {
-  try {
-    const [sk, cx] = await Promise.all([skus.list(), complexes.list()])
-    skuOptions.value = (sk || []).map((s) => ({ id: s.id, code: s.code, productName: s.productName, spec: s.spec }))
-    complexList.value = cx || []
-  } catch (e) {
-    // 매칭 참조는 실패해도 업로드/저장은 가능
-  }
-}
-function skuLabel(s) {
-  return `${s.code} · ${s.productName}${s.spec ? ' (' + s.spec + ')' : ''}`
+  try { complexList.value = await complexes.list() } catch (e) { /* 실패해도 업로드/저장 가능 */ }
 }
 
 onMounted(() => {
   load()
+  loadOptions()
   loadRefs()
 })
 
@@ -169,7 +166,9 @@ async function save() {
     await quotes.create(payload)
     toast.success('견적서가 저장되었습니다.')
     reviewModal.value = false
+    page.value = 1
     await load()
+    loadOptions()
   } catch (e) {
     toast.error('저장 실패: ' + (e.message || e.code))
   }
@@ -203,11 +202,6 @@ async function relink(it) {
     }
   }
 }
-function skuName(id) {
-  const s = skuOptions.value.find((x) => x.id === id)
-  return s ? skuLabel(s) : ''
-}
-
 async function removeQuote(item) {
   const ok = await confirm.value.ask({
     title: '견적서 삭제',
@@ -219,6 +213,7 @@ async function removeQuote(item) {
     await quotes.remove(item.id)
     toast.success('삭제되었습니다.')
     await load()
+    loadOptions()
   } catch (e) {
     toast.error('삭제 실패: ' + (e.message || e.code))
   }
@@ -226,6 +221,20 @@ async function removeQuote(item) {
 
 /* ---------- 유틸 ---------- */
 function fmt(n) { return (Number(n) || 0).toLocaleString() }
+
+// 견적 PDF는 인증 필요(/files/quotes/**) → 토큰 실은 fetch로 받아 새 탭에서 열기
+async function openPdf(url) {
+  if (!url) return
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } })
+    if (!res.ok) throw new Error('열기 실패 (' + res.status + ')')
+    const blobUrl = URL.createObjectURL(await res.blob())
+    window.open(blobUrl, '_blank')
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+  } catch (e) {
+    toast.error('PDF 열기 실패: ' + (e.message || e.code))
+  }
+}
 </script>
 
 <template>
@@ -237,32 +246,32 @@ function fmt(n) { return (Number(n) || 0).toLocaleString() }
   </PageHeader>
 
   <!-- 조회 필터 -->
-  <div v-if="list.length" class="mb-3 flex flex-wrap items-center gap-2">
+  <div v-if="options.months.length || options.vendors.length || fMonth || fVendor || fComplex" class="mb-3 flex flex-wrap items-center gap-2">
     <AppSelect v-model="fMonth" class="w-auto">
       <option value="">전체 월</option>
-      <option v-for="m in monthOptions" :key="m" :value="m">{{ m }}</option>
+      <option v-for="m in options.months" :key="m" :value="m">{{ m }}</option>
     </AppSelect>
     <AppSelect v-model="fVendor" class="w-auto">
       <option value="">전체 업체</option>
-      <option v-for="v in vendorOptions" :key="v" :value="v">{{ v }}</option>
+      <option v-for="v in options.vendors" :key="v" :value="v">{{ v }}</option>
     </AppSelect>
     <AppSelect v-model="fComplex" class="w-auto">
       <option value="">전체 단지</option>
-      <option v-for="c in complexOptions" :key="c" :value="c">{{ c }}</option>
+      <option v-for="c in options.complexes" :key="c" :value="c">{{ c }}</option>
     </AppSelect>
     <button v-if="fMonth || fVendor || fComplex" class="btn-ghost btn-sm" @click="resetFilters">초기화</button>
-    <span class="ml-auto text-xs text-slate-400">{{ filtered.length }} / {{ list.length }}건</span>
+    <span class="ml-auto text-xs text-slate-400">총 {{ total }}건</span>
   </div>
 
   <!-- 목록 -->
   <div class="card">
     <div class="overflow-x-auto scrollbar-slim">
       <div v-if="loading" class="p-8 text-center text-sm text-slate-400">불러오는 중…</div>
+      <div v-else-if="!list.length && (fMonth || fVendor || fComplex)" class="p-10 text-center text-sm text-slate-400">
+        조건에 맞는 견적서가 없습니다.
+      </div>
       <div v-else-if="!list.length" class="p-10 text-center text-sm text-slate-400">
         등록된 견적서가 없습니다. 우측 상단 “견적서 업로드”로 시작하세요.
-      </div>
-      <div v-else-if="!filtered.length" class="p-10 text-center text-sm text-slate-400">
-        조건에 맞는 견적서가 없습니다.
       </div>
       <table v-else class="w-full min-w-[720px] text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
@@ -276,7 +285,7 @@ function fmt(n) { return (Number(n) || 0).toLocaleString() }
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="q in filtered" :key="q.id" class="hover:bg-slate-50/60">
+          <tr v-for="q in list" :key="q.id" class="hover:bg-slate-50/60">
             <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ q.quoteDate || '-' }}</td>
             <td class="px-4 py-3 font-medium text-slate-800">{{ q.vendorName }}</td>
             <td class="px-4 py-3">
@@ -293,6 +302,7 @@ function fmt(n) { return (Number(n) || 0).toLocaleString() }
         </tbody>
       </table>
     </div>
+    <Pager v-if="total" v-model:page="page" :total="total" :total-pages="totalPages" class="border-t border-slate-100" />
   </div>
 
   <!-- 검토·매칭 모달 -->
@@ -312,7 +322,7 @@ function fmt(n) { return (Number(n) || 0).toLocaleString() }
         </div>
         <div><label class="label">합계(VAT포함)</label><input v-model.number="form.totalAmount" type="number" class="input" /></div>
         <div class="flex items-end">
-          <a v-if="form.fileUrl" :href="form.fileUrl" target="_blank" class="btn-ghost btn-sm">원본 PDF 열기</a>
+          <button v-if="form.fileUrl" type="button" class="btn-ghost btn-sm" @click="openPdf(form.fileUrl)">원본 PDF 열기</button>
         </div>
       </div>
 
@@ -350,7 +360,7 @@ function fmt(n) { return (Number(n) || 0).toLocaleString() }
               <td class="px-2 py-2 text-right tabular-nums text-slate-500">{{ fmt(it.vatAmount) }}</td>
               <td class="px-2 py-2">
                 <div class="flex items-center gap-1">
-                  <SkuPicker v-model="it.skuId" :skus="skuOptions" class="min-w-[200px]" placeholder="— 새 제품(미연결) —" />
+                  <SkuPicker v-model="it.skuId" :initial-label="it.suggestedSkuLabel || ''" class="min-w-[200px]" placeholder="— 새 제품(미연결) —" />
                   <span v-if="it.suggested && it.skuId && it.skuId === it.suggestedSkuId"
                         class="badge bg-emerald-50 text-emerald-600 whitespace-nowrap">AI추천</span>
                 </div>
@@ -405,14 +415,14 @@ function fmt(n) { return (Number(n) || 0).toLocaleString() }
               <td class="px-3 py-2 text-right tabular-nums">{{ fmt(it.amount) }}</td>
               <td class="px-3 py-2 text-right tabular-nums text-slate-500">{{ fmt(it.vatAmount) }}</td>
               <td class="px-3 py-2">
-                <SkuPicker v-model="it.skuId" :skus="skuOptions" class="min-w-[220px]" placeholder="— 미연결 —" @change="relink(it)" />
+                <SkuPicker v-model="it.skuId" class="min-w-[220px]" placeholder="— 미연결 —" @change="relink(it)" />
               </td>
             </tr>
           </tbody>
         </table>
       </div>
       <div class="text-right">
-        <a v-if="detail.fileUrl" :href="detail.fileUrl" target="_blank" class="btn-ghost btn-sm">원본 PDF 열기</a>
+        <button v-if="detail.fileUrl" type="button" class="btn-ghost btn-sm" @click="openPdf(detail.fileUrl)">원본 PDF 열기</button>
       </div>
     </div>
     <template #footer>
