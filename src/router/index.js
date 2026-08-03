@@ -75,6 +75,9 @@ const routes = [
       // ── 설정 ──
       { path: 'users', name: 'users', component: () => import('@/pages/admin/UsersView.vue'), meta: { admin: true } },
       { path: 'audit', name: 'audit-log', component: () => import('@/pages/admin/AuditLogView.vue'), meta: { admin: true } },
+
+      // ── 견적관리 (admin) ──
+      { path: 'quotes', name: 'quotes', component: () => import('@/pages/quotes/QuotesView.vue'), meta: { admin: true } },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },

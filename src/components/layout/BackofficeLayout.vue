@@ -58,6 +58,8 @@ const allNav = computed(() => [
   { name: 'audit', label: '재고실사', icon: 'audit', to: { name: 'audit' }, group: '재고관리', admin: true },
   { name: 'status', label: '재고현황', icon: 'status', to: { name: 'status' }, group: '재고관리' },
 
+  { name: 'quotes', label: '견적서관리', icon: 'detail', to: { name: 'quotes' }, group: '견적관리', admin: true },
+
   { name: 'users', label: '사용자관리', icon: 'users', to: { name: 'users' }, group: '설정', admin: true },
   { name: 'audit-log', label: '감사로그', icon: 'shield', to: { name: 'audit-log' }, group: '설정', admin: true },
 ])

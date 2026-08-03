@@ -2,10 +2,10 @@
 defineProps({
   modelValue: Boolean,
   title: { type: String, default: '' },
-  size: { type: String, default: 'md' }, // sm | md | lg
+  size: { type: String, default: 'md' }, // sm | md | lg | xl
 })
 const emit = defineEmits(['update:modelValue'])
-const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl' }
+const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
 </script>
 
 <template>

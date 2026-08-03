@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { skus, products, categories, productCodes, productDetails } from '@/services/db'
+import { skus, products, categories, productCodes, productDetails, quotes } from '@/services/db'
 import { makeQrBatch } from '@/services/qr'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
@@ -16,6 +16,33 @@ import { addCycle, fmtDate, CYCLE_UNITS } from '@/utils/date'
 
 const toast = useToast()
 const { busy: saving, run } = useBusy()
+const quotePrice = ref(null) // 연결된 최근 견적 단가(표준단가 힌트)
+
+/* 견적에서 불러오기 (새 제품 연결) — 미연결 견적품목을 새 SKU 에 연결 */
+const pendingQuoteItem = ref(null) // 저장 시 연결할 견적품목
+const quotePickerModal = ref(false)
+const unmatchedItems = ref([])
+const quoteSearch = ref('')
+const unmatchedFiltered = computed(() => {
+  const s = quoteSearch.value.trim().toLowerCase()
+  if (!s) return unmatchedItems.value
+  return unmatchedItems.value.filter((it) =>
+    `${it.rawName} ${it.spec || ''} ${it.vendorName || ''}`.toLowerCase().includes(s))
+})
+async function openQuotePicker() {
+  try {
+    unmatchedItems.value = await quotes.unmatched()
+    quoteSearch.value = ''
+    quotePickerModal.value = true
+  } catch (e) { toast.error('견적 품목 조회 실패: ' + (e.message || e.code)) }
+}
+function pickQuoteItem(it) {
+  pendingQuoteItem.value = it
+  if (!form.spec) form.spec = it.spec || ''
+  form.price = it.unitPrice || 0
+  quotePickerModal.value = false
+}
+function clearPendingQuote() { pendingQuoteItem.value = null }
 const confirm = ref(null)
 
 const loading = ref(true)
@@ -170,12 +197,17 @@ const priceDisplay = computed({
 function openCreate() {
   if (!productList.value.length) return toast.error('먼저 상품을 등록하세요.')
   editing.value = null
+  quotePrice.value = null
+  pendingQuoteItem.value = null
   Object.assign(form, blankForm())
   Object.assign(psel, { categoryId: '', productCodeId: '', productDetailId: '' })
   modal.value = true
 }
 function openEdit(s) {
   editing.value = s
+  quotePrice.value = null
+  pendingQuoteItem.value = null
+  quotes.forSku(s.id).then((q) => { quotePrice.value = q ? q.unitPrice : null }).catch(() => {})
   Object.assign(form, {
     productId: s.productId, code: s.code, spec: s.spec || '',
     dimW: s.dimW ?? '', dimL: s.dimL ?? '', dimH: s.dimH ?? '', dimD: s.dimD ?? '',
@@ -226,7 +258,11 @@ async function save() {
         categoryId: product.categoryId, productCodeId: product.productCodeId, productDetailId: product.productDetailId,
         pathLabel: product.pathLabel || '',
       })
-      toast.success(`SKU 생성 완료 (${r.code}) · 재고는 입고에서 위치별로 등록됩니다`)
+      let extra = ''
+      if (pendingQuoteItem.value) {
+        try { await quotes.linkItem(pendingQuoteItem.value.quoteItemId, r.id); extra = ' · 견적 연결됨' } catch (_) { /* 링크 실패는 무시 */ }
+      }
+      toast.success(`SKU 생성 완료 (${r.code})${extra} · 재고는 입고에서 위치별로 등록됩니다`)
     }
     modal.value = false
     await load()
@@ -376,6 +412,19 @@ async function printSelected() {
 
     <BaseModal v-model="modal" :title="editing ? 'SKU 수정' : 'SKU 추가'">
       <div class="space-y-3">
+        <!-- 견적에서 불러오기 (새 제품 연결) -->
+        <div v-if="!editing" class="rounded-lg border border-brand-100 bg-brand-50/40 p-2">
+          <div v-if="pendingQuoteItem" class="flex items-center justify-between gap-2 text-sm">
+            <div class="min-w-0 truncate">
+              <span class="text-xs text-brand-700">📄 견적 연결:</span>
+              <b class="text-slate-800">{{ pendingQuoteItem.rawName }}</b>
+              <span class="text-xs text-slate-400">· {{ pendingQuoteItem.vendorName }} {{ pendingQuoteItem.quoteDate }} · {{ pendingQuoteItem.qty }}{{ pendingQuoteItem.unit || '개' }} · {{ Number(pendingQuoteItem.unitPrice).toLocaleString() }}원</span>
+            </div>
+            <button type="button" class="btn-ghost btn-sm shrink-0" @click="clearPendingQuote">해제</button>
+          </div>
+          <button v-else type="button" class="btn-ghost btn-sm w-full" @click="openQuotePicker">📄 견적에서 불러오기 (새 제품 연결)</button>
+        </div>
+
         <div v-if="!editing" class="grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-2">
           <AppSelect v-model="psel.categoryId" class="text-sm w-full" @change="onPselCategory">
             <option value="">전체 카테고리</option>
@@ -428,7 +477,14 @@ async function printSelected() {
             </AppSelect>
           </div>
           <div v-if="form.purposeSel === '기타'" class="col-span-2"><label class="label">구매목적 직접 입력</label><input v-model="form.purpose" class="input" /></div>
-          <div><label class="label">표준단가(원)</label><input v-model="priceDisplay" inputmode="numeric" class="input" placeholder="0" /></div>
+          <div>
+            <label class="label">표준단가(원)</label>
+            <input v-model="priceDisplay" inputmode="numeric" class="input" placeholder="0" />
+            <p v-if="quotePrice != null" class="mt-1 text-[11px] text-brand-600">
+              최근 견적가 {{ Number(quotePrice).toLocaleString() }}원
+              <button type="button" class="ml-1 underline" @click="form.price = quotePrice">적용</button>
+            </p>
+          </div>
           <div><label class="label">안전재고</label><input v-model.number="form.safetyStock" type="number" min="0" class="input" /></div>
         </div>
         <div>
@@ -503,6 +559,30 @@ async function printSelected() {
         <button class="btn-ghost" @click="showQr(detailSku)">QR</button>
         <button class="btn-ghost" @click="editFromDetail">수정</button>
         <button class="btn-primary" @click="detailModal = false">닫기</button>
+      </template>
+    </BaseModal>
+
+    <!-- 견적 품목 선택(새 제품 연결) -->
+    <BaseModal v-model="quotePickerModal" title="견적 품목에서 불러오기" size="lg">
+      <input v-model="quoteSearch" class="input mb-2" placeholder="품명·규격·업체 검색" />
+      <div class="max-h-[50vh] overflow-auto scrollbar-slim rounded-lg border border-slate-100">
+        <div v-if="!unmatchedFiltered.length" class="p-8 text-center text-sm text-slate-400">미연결 견적 품목이 없습니다.</div>
+        <button v-for="it in unmatchedFiltered" :key="it.quoteItemId" type="button"
+          class="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-3 py-2 text-left hover:bg-brand-50"
+          @click="pickQuoteItem(it)">
+          <div class="min-w-0">
+            <div class="truncate text-sm font-medium text-slate-800">{{ it.rawName }}<span v-if="it.spec" class="ml-1 text-xs text-slate-400">{{ it.spec }}</span></div>
+            <div class="text-[11px] text-slate-400">{{ it.vendorName }} · {{ it.quoteDate || '-' }}</div>
+          </div>
+          <div class="shrink-0 text-right text-xs text-slate-500">
+            <div>{{ it.qty }}{{ it.unit || '개' }}</div>
+            <div>{{ Number(it.unitPrice).toLocaleString() }}원</div>
+          </div>
+        </button>
+      </div>
+      <p class="mt-2 text-[11px] text-slate-400">선택하면 규격·단가가 채워지고, 저장 시 이 SKU 에 견적이 연결됩니다.</p>
+      <template #footer>
+        <button class="btn-ghost" @click="quotePickerModal = false">닫기</button>
       </template>
     </BaseModal>
 

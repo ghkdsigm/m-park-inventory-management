@@ -6,8 +6,9 @@ import java.time.LocalDateTime;
 public final class StockDtos {
     private StockDtos() {}
 
-    /** 입고 — SKU + 보관위치(필수) + 수량. 위치의 단지로 재고행을 find/create. */
-    public record InboundRequest(String skuId, String storageLocationId, Integer qty, String memo, String reason, String requestId) {}
+    /** 입고 — SKU + 보관위치(필수) + 수량 (+ 실구매단가 unitPrice, 백오피스 입고에서만). 위치의 단지로 재고행을 find/create. */
+    public record InboundRequest(String skuId, String storageLocationId, Integer qty, String memo, String reason, String requestId,
+                                 java.math.BigDecimal unitPrice) {}
 
     /** 출고 — 재고행 대상 (+ 출고 상세: 사용처/요청부서/요청자/담당자) */
     public record OutboundRequest(String stockId, Integer qty, String memo, String reason,

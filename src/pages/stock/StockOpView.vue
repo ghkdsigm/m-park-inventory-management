@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   skus, categories, productCodes, complexes, storageLocations, zones, subZones,
-  inboundStock, outboundStock, adjustStock, listMovements, voidMovement,
+  inboundStock, outboundStock, adjustStock, listMovements, voidMovement, quotes,
 } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -45,6 +45,7 @@ const handler = ref('')
 const loading = ref(true)
 const search = ref('')
 const qty = ref(1)
+const purchasePrice = ref('') // 입고 실구매단가(백오피스, 견적 기반)
 const memo = ref('')
 const working = ref(false)
 const opRid = ref('') // 멱등 요청ID (실패 재시도 시 재사용, 성공/재선택 시 초기화)
@@ -52,6 +53,10 @@ const newRid = () => (globalThis.crypto?.randomUUID?.() || (Date.now() + '-' + M
 const selected = ref(null) // 입고=변형 SKU, 그외=재고행(StockRow)
 const movements = ref([])
 const imgOpen = ref(false)
+const quoteInfo = ref(null) // 선택 SKU의 최근 연결 견적(견적 단가/수량/오차)
+const fmt = (n) => (Number(n) || 0).toLocaleString()
+const qtyDiff = computed(() => (quoteInfo.value ? (Number(qty.value) || 0) - quoteInfo.value.qty : 0))
+const purchaseTotal = computed(() => (Number(qty.value) || 0) * (Number(purchasePrice.value) || 0))
 
 const variants = ref([])   // 입고용 SKU(변형) 목록
 const locBySku = ref({})   // skuId → 현재 재고 위치들(재고행)
@@ -179,6 +184,8 @@ watch(search, () => { if (!isInbound.value) { clearTimeout(searchTimer); searchT
 
 async function selectItem(x) {
   selected.value = x
+  quoteInfo.value = null
+  purchasePrice.value = ''
   qty.value = isSet.value ? (x.qty || 0) : 1
   memo.value = ''; reason.value = ''
   opRid.value = ''
@@ -187,6 +194,7 @@ async function selectItem(x) {
   outComplex.value = ''; outZone.value = ''; outSub.value = ''
   const skuId = x.skuId || x.id
   movements.value = skuId ? await listMovements(skuId, 6) : []
+  if (skuId) { try { quoteInfo.value = await quotes.forSku(skuId) } catch (_) { quoteInfo.value = null } }
 }
 
 async function submit() {
@@ -211,7 +219,7 @@ async function submit() {
     let r
     if (isInbound.value) {
       if (!inLoc.value) { working.value = false; return toast.error('보관위치를 선택하세요. (입고는 위치 필수)') }
-      r = await inboundStock(selected.value.id, inLoc.value, v, memoVal, reason.value, opRid.value)
+      r = await inboundStock(selected.value.id, inLoc.value, v, memoVal, reason.value, opRid.value, purchasePrice.value)
     } else if (op.value === 'out') {
       r = await outboundStock(selected.value.stockId, v, memoVal, reason.value, {
         usagePlace: outLocLabel.value, requestDept: requestDept.value.trim(),
@@ -328,6 +336,17 @@ async function confirmVoid() {
             <p class="text-sm text-slate-600">{{ selected.productName }} <span v-if="specText(selected)" class="text-slate-400">· {{ specText(selected) }}</span></p>
             <p v-if="!isInbound" class="text-xs text-slate-400">📍 {{ selected.complexName }}<span v-if="selected.locationLabel"> › {{ selected.locationLabel }}</span></p>
 
+            <!-- 최근 연결 견적 -->
+            <div v-if="quoteInfo" class="my-4 rounded-lg border border-brand-100 bg-brand-50/50 p-3 text-sm">
+              <p class="mb-1 text-xs font-semibold text-brand-700">
+                📄 최근 견적 · {{ quoteInfo.quoteDate || '-' }} · {{ quoteInfo.vendorName }}
+                <span v-if="quoteInfo.linkedCount > 1" class="font-normal text-slate-400">(연결 {{ quoteInfo.linkedCount }}건)</span>
+              </p>
+              <div class="flex justify-between"><span class="text-slate-500">견적 단가</span><b>{{ fmt(quoteInfo.unitPrice) }}원</b></div>
+              <div class="flex justify-between"><span class="text-slate-500">견적 수량</span><b>{{ quoteInfo.qty }}{{ quoteInfo.unit ? ' ' + quoteInfo.unit : '개' }}</b></div>
+              <div class="mt-1 flex justify-between border-t border-brand-100 pt-1"><span class="text-slate-500">견적 합계</span><b class="text-brand-700">{{ fmt(quoteInfo.amount) }}원</b></div>
+            </div>
+
             <div v-if="!isInbound" class="my-4 rounded-lg bg-slate-50 py-3 text-center">
               <span class="text-xs text-slate-400">현재 재고</span>
               <p class="text-3xl font-extrabold" :class="selected.qty <= 0 ? 'text-rose-500' : 'text-brand-600'">{{ selected.qty }}<span class="text-base text-slate-400">개</span></p>
@@ -358,7 +377,29 @@ async function confirmVoid() {
             </div>
 
             <label class="label">{{ cfg.qtyLabel }}</label>
-            <input v-model.number="qty" type="number" min="0" class="input mb-3 text-lg" />
+            <input v-model.number="qty" type="number" min="0" class="input text-lg" :class="isInbound && quoteInfo ? 'mb-1' : 'mb-3'" />
+            <p v-if="isInbound && quoteInfo" class="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+              <span :class="qtyDiff === 0 ? 'text-emerald-600' : 'text-amber-600'">
+                견적 {{ quoteInfo.qty }}개 · 입고 {{ Number(qty) || 0 }}개 → 오차 {{ qtyDiff > 0 ? '+' : '' }}{{ qtyDiff }}개
+                <span v-if="qtyDiff === 0">✓ 일치</span>
+              </span>
+              <button type="button" class="btn-ghost btn-sm" @click="qty = quoteInfo.qty">견적수량({{ quoteInfo.qty }}) 적용</button>
+            </p>
+
+            <!-- 구매단가 (백오피스 입고 실구매가 · 견적 기반) -->
+            <div v-if="isInbound" class="mb-3">
+              <label class="label">구매단가 <span class="font-normal text-slate-400">(실구매가 · 선택)</span></label>
+              <div class="flex items-center gap-2">
+                <input v-model.number="purchasePrice" type="number" min="0" class="input flex-1" placeholder="0" />
+                <button v-if="quoteInfo" type="button" class="btn-ghost btn-sm shrink-0" @click="purchasePrice = quoteInfo.unitPrice">
+                  견적가격({{ fmt(quoteInfo.unitPrice) }}) 적용
+                </button>
+              </div>
+              <p v-if="Number(purchasePrice) > 0" class="mt-1 text-xs text-slate-500">
+                입고수량 {{ Number(qty) || 0 }} × 구매단가 {{ fmt(purchasePrice) }}원 =
+                <b class="text-slate-700">{{ fmt(purchaseTotal) }}원</b>
+              </p>
+            </div>
 
             <div class="mb-3">
               <label class="label">사유 / 구분 *</label>

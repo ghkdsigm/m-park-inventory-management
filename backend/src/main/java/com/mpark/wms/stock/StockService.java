@@ -77,7 +77,8 @@ public class StockService {
         }
         stockRepo.save(st);
 
-        saveMovement(st, sku, "in", val, val, before, after, r.memo(), r.reason(), null);
+        StockMovement mv = saveMovement(st, sku, "in", val, val, before, after, r.memo(), r.reason(), null);
+        if (r.unitPrice() != null) mv.setUnitPrice(r.unitPrice()); // 입고 실구매단가(백오피스 입고에서만)
         bumpDaily("in", val, +1);
         auditService.log("입/출고관리", "입고", sku.getId(),
                 sku.getCode() + " @" + nz2(st.getComplexName()) + " (" + before + "→" + after + ")", sku.getProductName());

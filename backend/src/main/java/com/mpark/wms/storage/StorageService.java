@@ -49,6 +49,24 @@ public class StorageService {
         return new UploadResult(publicBaseUrl + "/" + relPath, relPath);
     }
 
+    /** 임의 바이트 저장(예: 견적서 PDF). prefix 폴더에 uuid.ext 로 저장하고 공개 URL 을 반환. */
+    public UploadResult uploadBytes(byte[] data, String prefix, String ext) {
+        if (data == null || data.length == 0) throw ApiException.badRequest("파일이 비어 있습니다.");
+        String safePrefix = sanitize(prefix == null || prefix.isBlank() ? "files" : prefix);
+        String safeExt = (ext == null || ext.isBlank()) ? "bin" : ext.replaceAll("[^a-zA-Z0-9]", "");
+        String name = UUID.randomUUID().toString().replace("-", "") + "." + safeExt;
+        String relPath = safePrefix + "/" + name;
+        try {
+            Path target = baseDir.resolve(relPath).normalize();
+            if (!target.startsWith(baseDir)) throw ApiException.badRequest("잘못된 경로입니다.");
+            Files.createDirectories(target.getParent());
+            Files.write(target, data);
+        } catch (IOException e) {
+            throw new ApiException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "업로드 실패: " + e.getMessage());
+        }
+        return new UploadResult(publicBaseUrl + "/" + relPath, relPath);
+    }
+
     /** 공개 URL 로 객체 삭제. 실패해도 무시(Supabase deleteImageByUrl 동작과 동일) */
     public void deleteByUrl(String url) {
         if (url == null) return;

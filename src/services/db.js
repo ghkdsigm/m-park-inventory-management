@@ -25,6 +25,23 @@ export const categories = makeBoard('categories')
 export const productCodes = makeBoard('product-codes')
 export const productDetails = makeBoard('product-details')
 
+/* ===================== 견적서 ===================== */
+export const quotes = {
+  ...makeBoard('quotes'),
+  // PDF 업로드 → 추출+SKU추천 결과(미저장) 반환
+  upload: (file) => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    return api.upload('/quotes/upload', form)
+  },
+  // 특정 SKU 의 최근 연결 견적 요약(없으면 null)
+  forSku: (skuId) => api.get(`/quotes/for-sku/${skuId}`),
+  // SKU 미연결 견적 품목(새 제품 연결 후보)
+  unmatched: () => api.get('/quotes/unmatched'),
+  // 견적 품목 ↔ SKU 연결/해제
+  linkItem: (itemId, skuId) => api.post(`/quotes/items/${itemId}/link`, { skuId }),
+}
+
 export const MASTER = {
   complexes: { board: complexes, label: '단지', parent: null, auto: false },
   categories: { board: categories, label: '카테고리', parent: null, auto: true },
@@ -186,8 +203,11 @@ function mapMovement(m) {
 }
 
 /** 입고 — SKU(변형) + 보관위치(필수) + 수량 → 재고행 find/create */
-export async function inboundStock(skuId, storageLocationId, qty, memo = '', reason = '', requestId = '') {
-  return api.post('/stock/inbound', { skuId, storageLocationId, qty: Number(qty), memo: memo || '', reason: reason || '', requestId: requestId || '' })
+export async function inboundStock(skuId, storageLocationId, qty, memo = '', reason = '', requestId = '', unitPrice = null) {
+  return api.post('/stock/inbound', {
+    skuId, storageLocationId, qty: Number(qty), memo: memo || '', reason: reason || '', requestId: requestId || '',
+    unitPrice: unitPrice === null || unitPrice === '' ? null : Number(unitPrice),
+  })
 }
 
 /** 출고 — 재고행(stockId) 대상. extra: 사용처/요청부서/요청자/담당자 */

@@ -47,6 +47,7 @@ public class StockMovement {
     private String pathLabel;
     private String memo = "";
     private String reason = "";
+    private java.math.BigDecimal unitPrice; // 입고 실구매단가 (백오피스 입고에서만, null=미입력)
     // 출고 상세 (주로 out 에서 사용)
     private String usagePlace = "";   // 사용처
     private String requestDept = "";  // 요청부서
