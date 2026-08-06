@@ -41,8 +41,8 @@ app:
     api-key: ${OPENAI_API_KEY:}
     # 챗봇/사진검색: 저비용 소형 모델(툴 기반이라 충분). 비용 큰 폭 절감.
     model: ${OPENAI_MODEL:${AI_MODEL:gpt-4o-mini}}
-    # 견적서 추출: 정확도 중요(표 파싱) → 고정확 모델 유지.
-    extract-model: ${OPENAI_EXTRACT_MODEL:gpt-4o}
+    # 견적서 추출: 비용 절감 위해 mini 사용(검산 규칙으로 정확도 보완). 필요 시 OPENAI_EXTRACT_MODEL 로 gpt-4o 복귀.
+    extract-model: ${OPENAI_EXTRACT_MODEL:gpt-4o-mini}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
   minimax:
     # MiniMax(Hailuo) TTS(음성 합성). 미설정 시 프론트가 브라우저 기본 음성으로 폴백.

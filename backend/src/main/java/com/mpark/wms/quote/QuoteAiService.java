@@ -23,7 +23,7 @@ public class QuoteAiService {
 
     @Value("${app.ai.api-key:}")
     private String apiKey;
-    @Value("${app.ai.extract-model:gpt-4o}") // 견적 표 파싱 정확도 위해 고정확 모델
+    @Value("${app.ai.extract-model:gpt-4o-mini}") // 비용 절감(검산 규칙으로 보완)
     private String model;
     @Value("${app.ai.base-url:https://api.openai.com/v1}")
     private String baseUrl;
