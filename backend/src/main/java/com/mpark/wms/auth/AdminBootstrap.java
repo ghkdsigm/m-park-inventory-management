@@ -17,8 +17,8 @@ public class AdminBootstrap {
 
     private final ProfileRepository repo;
 
-    @Value("${app.bootstrap-admin-email:admin@dongwha.com}")
-    private String adminEmail;
+    @Value("${app.bootstrap-admin-username:admin}")
+    private String adminUsername;
 
     @Bean
     public ApplicationRunner promoteFirstAdmin() {
@@ -27,10 +27,10 @@ public class AdminBootstrap {
 
     @Transactional
     void promote() {
-        if (adminEmail == null || adminEmail.isBlank()) return;
-        repo.findByEmail(adminEmail.trim()).ifPresent(p -> {
-            if (!"admin".equals(p.getRole())) {
-                p.setRole("admin");
+        if (adminUsername == null || adminUsername.isBlank()) return;
+        repo.findByUsername(adminUsername.trim()).ifPresent(p -> {
+            if (!"super".equals(p.getRole())) {
+                p.setRole("super");
                 p.setCanStock(true);
                 repo.save(p);
             }

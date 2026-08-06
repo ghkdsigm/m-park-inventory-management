@@ -6,16 +6,14 @@ import java.time.LocalDateTime;
 public final class AuthDtos {
     private AuthDtos() {}
 
-    public record RegisterRequest(String email, String password, String displayName) {}
+    public record LoginRequest(String username, String password) {}
 
-    public record LoginRequest(String email, String password) {}
-
-    public record ProfileDto(String id, String email, String displayName, String role,
+    public record ProfileDto(String id, String username, String email, String displayName, String role,
                              boolean canStock, LocalDateTime createdAt) {}
 
     public record AuthResponse(String token, ProfileDto profile) {}
 
-    public record RoleRequest(String role) {}
-
-    public record StockPermRequest(boolean canStock) {}
+    /** 사용자 생성/수정 요청 (관리자). 수정 시 password 가 비어있으면 비번 유지. */
+    public record UserUpsertRequest(String username, String password, String displayName,
+                                    String email, String role) {}
 }

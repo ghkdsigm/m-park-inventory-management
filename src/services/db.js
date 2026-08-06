@@ -334,6 +334,7 @@ export async function topChangedSkus(limit = 10) {
 export const users = {
   get: (uid) => api.get(`/users/${uid}`),
   list: () => api.get('/users'),
-  setRole: (uid, role) => api.put(`/users/${uid}/role`, { role }),
-  setStockPerm: (uid, canStock) => api.put(`/users/${uid}/stock-perm`, { canStock }),
+  create: (data) => api.post('/users', data),
+  update: (uid, data) => api.put(`/users/${uid}`, data),
+  remove: (uid) => api.del(`/users/${uid}`),
 }

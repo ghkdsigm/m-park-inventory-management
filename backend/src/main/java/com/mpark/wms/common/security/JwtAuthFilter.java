@@ -30,7 +30,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             AuthUser user = jwtService.parse(header.substring(7));
             if (user != null) {
-                String authority = "admin".equals(user.role()) ? "ROLE_ADMIN" : "ROLE_USER";
+                // super/manager/registrar → ROLE_SUPER/ROLE_MANAGER/ROLE_REGISTRAR.
+                // 구버전 토큰(admin/user) 하위호환: admin→super, user→manager.
+                String r = user.role();
+                if ("admin".equals(r)) r = "super";
+                else if ("user".equals(r)) r = "manager";
+                if (r == null || r.isBlank()) r = "registrar";
+                String authority = "ROLE_" + r.toUpperCase();
                 var auth = new UsernamePasswordAuthenticationToken(
                         user, null, List.of(new SimpleGrantedAuthority(authority)));
                 SecurityContextHolder.getContext().setAuthentication(auth);

@@ -33,52 +33,52 @@ const routes = [
         path: 'master/complexes',
         name: 'complexes',
         component: () => import('@/pages/master/MasterCodeBoard.vue'),
-        meta: { admin: true, masterKey: 'complexes' },
+        meta: { manage: true, masterKey: 'complexes' },
       },
       {
         path: 'master/categories',
         name: 'categories',
         component: () => import('@/pages/master/MasterCodeBoard.vue'),
-        meta: { admin: true, masterKey: 'categories' },
+        meta: { manage: true, masterKey: 'categories' },
       },
       {
         path: 'master/product-codes',
         name: 'productCodes',
         component: () => import('@/pages/master/MasterCodeBoard.vue'),
-        meta: { admin: true, masterKey: 'productCodes' },
+        meta: { manage: true, masterKey: 'productCodes' },
       },
       {
         path: 'master/product-details',
         name: 'productDetails',
         component: () => import('@/pages/master/MasterCodeBoard.vue'),
-        meta: { admin: true, masterKey: 'productDetails' },
+        meta: { manage: true, masterKey: 'productDetails' },
       },
 
       // ── 상품관리 (admin) ──
-      { path: 'products', name: 'products', component: () => import('@/pages/products/ProductsView.vue'), meta: { admin: true } },
-      { path: 'skus', name: 'skus', component: () => import('@/pages/products/SkusView.vue'), meta: { admin: true } },
+      { path: 'products', name: 'products', component: () => import('@/pages/products/ProductsView.vue'), meta: { manage: true } },
+      { path: 'skus', name: 'skus', component: () => import('@/pages/products/SkusView.vue'), meta: { manage: true } },
 
       // ── 위치관리 (admin) ──
-      { path: 'locations', name: 'locations', component: () => import('@/pages/locations/LocationView.vue'), meta: { admin: true } },
-      { path: 'storage-locations', name: 'storageLocations', component: () => import('@/pages/locations/StorageLocationView.vue'), meta: { admin: true } },
+      { path: 'locations', name: 'locations', component: () => import('@/pages/locations/LocationView.vue'), meta: { manage: true } },
+      { path: 'storage-locations', name: 'storageLocations', component: () => import('@/pages/locations/StorageLocationView.vue'), meta: { manage: true } },
 
       // ── 재고관리 ──
       { path: 'stock/inbound', name: 'inbound', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'in', stock: true } },
       { path: 'stock/outbound', name: 'outbound', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'out', stock: true } },
-      { path: 'stock/transfer', name: 'transfer', component: () => import('@/pages/stock/StockTransferView.vue'), meta: { stock: true } },
-      { path: 'stock/adjust', name: 'adjust', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'adjust', admin: true } },
-      { path: 'stock/audit', name: 'audit', component: () => import('@/pages/stock/StockAuditView.vue'), meta: { admin: true } },
+      { path: 'stock/transfer', name: 'transfer', component: () => import('@/pages/stock/StockTransferView.vue'), meta: { manage: true } },
+      { path: 'stock/adjust', name: 'adjust', component: () => import('@/pages/stock/StockOpView.vue'), meta: { op: 'adjust', manage: true } },
+      { path: 'stock/audit', name: 'audit', component: () => import('@/pages/stock/StockAuditView.vue'), meta: { manage: true } },
       { path: 'stock/history', name: 'history', component: () => import('@/pages/stock/StockHistoryView.vue') },
       { path: 'stock/status', name: 'status', component: () => import('@/pages/stock/StockStatusView.vue') },
       { path: 'stock/lifecycle', name: 'lifecycle', component: () => import('@/pages/stock/LifecycleView.vue') },
 
       // ── 설정 ──
-      { path: 'users', name: 'users', component: () => import('@/pages/admin/UsersView.vue'), meta: { admin: true } },
-      { path: 'audit', name: 'audit-log', component: () => import('@/pages/admin/AuditLogView.vue'), meta: { admin: true } },
-      { path: 'ai-usage', name: 'ai-usage', component: () => import('@/pages/admin/AiUsageView.vue'), meta: { admin: true } },
+      { path: 'users', name: 'users', component: () => import('@/pages/admin/UsersView.vue'), meta: { super: true } },
+      { path: 'audit', name: 'audit-log', component: () => import('@/pages/admin/AuditLogView.vue'), meta: { super: true } },
+      { path: 'ai-usage', name: 'ai-usage', component: () => import('@/pages/admin/AiUsageView.vue'), meta: { super: true } },
 
       // ── 견적관리 (admin) ──
-      { path: 'quotes', name: 'quotes', component: () => import('@/pages/quotes/QuotesView.vue'), meta: { admin: true } },
+      { path: 'quotes', name: 'quotes', component: () => import('@/pages/quotes/QuotesView.vue'), meta: { manage: true } },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },
@@ -95,7 +95,10 @@ router.beforeEach(async (to) => {
   if (!auth.ready) await auth.init()
   if (to.meta.public) return true
   if (!auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
-  if (to.meta.admin && !auth.isAdmin) return { name: 'dashboard' }
+  // 등록인은 백오피스 접근 불가 → 모바일 입출고 단말로
+  if (auth.isRegistrar) return { name: 'scanHome' }
+  if (to.meta.super && !auth.isSuper) return { name: 'dashboard' }
+  if (to.meta.manage && !auth.canManage) return { name: 'dashboard' }
   if (to.meta.stock && !auth.canStock) return { name: 'dashboard' }
   return true
 })

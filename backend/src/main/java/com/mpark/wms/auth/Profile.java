@@ -23,13 +23,16 @@ public class Profile {
     private String id;
 
     @Column(unique = true)
-    private String email;
+    private String username;           // 로그인 아이디
+
+    @Column(unique = true)
+    private String email;              // 선택(이메일)
 
     private String passwordHash;
     private String displayName;
 
-    private String role = "user";      // admin | user
-    private boolean canStock = false;  // 입/출고 권한
+    private String role = "registrar"; // super | manager | registrar
+    private boolean canStock = true;   // (역할로 대체된 하위호환 컬럼)
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

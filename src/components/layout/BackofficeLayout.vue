@@ -37,35 +37,35 @@ watch(() => route.name, loadAlerts) // 화면 이동 시 갱신(입출고 후 �
 const allNav = computed(() => [
   { name: 'dashboard', label: '대시보드', icon: 'grid', to: { name: 'dashboard' }, group: '' },
 
-  { name: 'categories', label: '카테고리관리', icon: 'folder', to: { name: 'categories' }, group: '기준정보관리', admin: true },
-  { name: 'productCodes', label: '제품코드관리', icon: 'tag', to: { name: 'productCodes' }, group: '기준정보관리', admin: true },
-  { name: 'productDetails', label: '제품상세코드관리', icon: 'detail', to: { name: 'productDetails' }, group: '기준정보관리', admin: true },
+  { name: 'categories', label: '카테고리관리', icon: 'folder', to: { name: 'categories' }, group: '기준정보관리', manage: true },
+  { name: 'productCodes', label: '제품코드관리', icon: 'tag', to: { name: 'productCodes' }, group: '기준정보관리', manage: true },
+  { name: 'productDetails', label: '제품상세코드관리', icon: 'detail', to: { name: 'productDetails' }, group: '기준정보관리', manage: true },
 
-  { name: 'products', label: '상품관리', icon: 'box', to: { name: 'products' }, group: '상품관리', admin: true },
-  { name: 'skus', label: 'SKU관리', icon: 'sku', to: { name: 'skus' }, group: '상품관리', admin: true },
+  { name: 'products', label: '상품관리', icon: 'box', to: { name: 'products' }, group: '상품관리', manage: true },
+  { name: 'skus', label: 'SKU관리', icon: 'sku', to: { name: 'skus' }, group: '상품관리', manage: true },
 
-  { name: 'complexes', label: '단지관리', icon: 'building', to: { name: 'complexes' }, group: '위치관리', admin: true },
-  { name: 'locations', label: '위치코드관리', icon: 'pin', to: { name: 'locations' }, group: '위치관리', admin: true },
-  { name: 'storageLocations', label: '보관위치관리', icon: 'box', to: { name: 'storageLocations' }, group: '위치관리', admin: true },
+  { name: 'complexes', label: '단지관리', icon: 'building', to: { name: 'complexes' }, group: '위치관리', manage: true },
+  { name: 'locations', label: '위치코드관리', icon: 'pin', to: { name: 'locations' }, group: '위치관리', manage: true },
+  { name: 'storageLocations', label: '보관위치관리', icon: 'box', to: { name: 'storageLocations' }, group: '위치관리', manage: true },
 
   { name: 'inbound', label: '입고관리', icon: 'inbound', to: { name: 'inbound' }, group: '입/출고관리', stock: true },
   { name: 'outbound', label: '출고관리', icon: 'outbound', to: { name: 'outbound' }, group: '입/출고관리', stock: true },
-  { name: 'transfer', label: '재고이동', icon: 'transfer', to: { name: 'transfer' }, group: '입/출고관리', stock: true },
+  { name: 'transfer', label: '재고이동', icon: 'transfer', to: { name: 'transfer' }, group: '입/출고관리', manage: true },
   { name: 'history', label: '입출고통합조회', icon: 'history', to: { name: 'history' }, group: '입/출고관리' },
   { name: 'lifecycle', label: '연한관리', icon: 'cycle', to: { name: 'lifecycle' }, group: '입/출고관리' },
 
-  { name: 'adjust', label: '재고조정', icon: 'adjust', to: { name: 'adjust' }, group: '재고관리', admin: true },
-  { name: 'audit', label: '재고실사', icon: 'audit', to: { name: 'audit' }, group: '재고관리', admin: true },
+  { name: 'adjust', label: '재고조정', icon: 'adjust', to: { name: 'adjust' }, group: '재고관리', manage: true },
+  { name: 'audit', label: '재고실사', icon: 'audit', to: { name: 'audit' }, group: '재고관리', manage: true },
   { name: 'status', label: '재고현황', icon: 'status', to: { name: 'status' }, group: '재고관리' },
 
-  { name: 'quotes', label: '견적서관리', icon: 'detail', to: { name: 'quotes' }, group: '견적관리', admin: true },
+  { name: 'quotes', label: '견적서관리', icon: 'detail', to: { name: 'quotes' }, group: '견적관리', manage: true },
 
-  { name: 'users', label: '사용자관리', icon: 'users', to: { name: 'users' }, group: '설정', admin: true },
-  { name: 'audit-log', label: '감사로그', icon: 'shield', to: { name: 'audit-log' }, group: '설정', admin: true },
-  { name: 'ai-usage', label: 'AI 사용량', icon: 'status', to: { name: 'ai-usage' }, group: '설정', admin: true },
+  { name: 'users', label: '사용자관리', icon: 'users', to: { name: 'users' }, group: '설정', super: true },
+  { name: 'audit-log', label: '감사로그', icon: 'shield', to: { name: 'audit-log' }, group: '설정', super: true },
+  { name: 'ai-usage', label: 'AI 사용량', icon: 'status', to: { name: 'ai-usage' }, group: '설정', super: true },
 ])
 
-const nav = computed(() => allNav.value.filter((i) => (!i.admin || auth.isAdmin) && (!i.stock || auth.canStock)))
+const nav = computed(() => allNav.value.filter((i) => (!i.super || auth.isSuper) && (!i.manage || auth.canManage) && (!i.stock || auth.canStock)))
 
 const grouped = computed(() => {
   const g = {}
@@ -165,7 +165,7 @@ async function doLogout() {
           <div class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-600">{{ auth.displayName.charAt(0).toUpperCase() }}</div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-xs font-semibold text-slate-700">{{ auth.displayName }}</p>
-            <p class="text-[11px]" :class="auth.isAdmin ? 'text-brand-600' : 'text-slate-400'">{{ auth.isAdmin ? '관리자' : '일반 사용자' }}</p>
+            <p class="text-[11px]" :class="auth.isAdmin ? 'text-brand-600' : 'text-slate-400'">{{ auth.isSuper ? '슈퍼관리자' : '매니저' }}</p>
           </div>
           <button class="relative shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="알림" @click="openAlerts">
             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0" /></svg>
@@ -183,7 +183,7 @@ async function doLogout() {
           <div class="flex h-7 w-7 items-center justify-center rounded-md bg-brand-600 text-xs font-bold text-white">M</div>
           <span class="text-sm font-bold text-slate-800">엠파크 WMS</span>
         </div>
-        <span class="badge" :class="auth.isAdmin ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-500'">{{ auth.isAdmin ? '관리자' : '일반' }}</span>
+        <span class="badge" :class="auth.isAdmin ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-500'">{{ auth.isSuper ? '슈퍼관리자' : '매니저' }}</span>
       </header>
 
       <main class="flex-1 overflow-y-auto px-4 pb-24 pt-4 scrollbar-slim sm:px-6 lg:pb-6">

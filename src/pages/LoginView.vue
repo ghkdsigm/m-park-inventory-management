@@ -10,59 +10,39 @@ const router = useRouter()
 const route = useRoute()
 const toast = useToast()
 
-const mode = ref('login') // login | register
-const email = ref('')
+const username = ref('')
 const password = ref('')
-const displayName = ref('')
 const loading = ref(false)
 
 // 아이디 저장 / 자동 로그인
-const EMAIL_KEY = 'mpark.savedEmail'
+const ID_KEY = 'mpark.savedUsername'
 const rememberId = ref(true)
 const autoLogin = ref(true)
 try {
-  const e = localStorage.getItem(EMAIL_KEY)
-  if (e) { email.value = e; rememberId.value = true } else { rememberId.value = false }
+  const u = localStorage.getItem(ID_KEY)
+  if (u) { username.value = u; rememberId.value = true } else { rememberId.value = false }
   autoLogin.value = getAutoLogin()
 } catch (e) { /* ignore */ }
 
-// Supabase 인증 에러 메시지(영문) → 한글 매핑
-function krError(e) {
-  const m = (e?.message || '').toLowerCase()
-  if (m.includes('invalid login')) return '이메일 또는 비밀번호가 올바르지 않습니다.'
-  if (m.includes('already registered') || m.includes('already been registered')) return '이미 사용 중인 이메일입니다.'
-  if (m.includes('password should be')) return '비밀번호는 6자 이상이어야 합니다.'
-  if (m.includes('email') && m.includes('invalid')) return '이메일 형식이 올바르지 않습니다.'
-  if (m.includes('not confirmed') || m.includes('confirm')) return '이메일 인증이 필요합니다. (관리자: Supabase에서 이메일 확인 비활성화 권장)'
-  if (m.includes('rate limit') || m.includes('too many')) return '잠시 후 다시 시도해주세요.'
-  return '오류가 발생했습니다. (' + (e?.message || '') + ')'
-}
-
 async function submit() {
-  // 붙여넣기 시 끼어드는 공백/줄바꿈/비ASCII 정리
-  const em = (email.value || '').trim().replace(/\s/g, '')
+  const id = (username.value || '').trim().replace(/\s/g, '')
   const pw = password.value || ''
-  if (!em || !pw) {
-    toast.error('이메일과 비밀번호를 입력하세요.')
+  if (!id || !pw) {
+    toast.error('아이디와 비밀번호를 입력하세요.')
     return
   }
   setAutoLogin(autoLogin.value)
   try {
-    if (rememberId.value) localStorage.setItem(EMAIL_KEY, em); else localStorage.removeItem(EMAIL_KEY)
+    if (rememberId.value) localStorage.setItem(ID_KEY, id); else localStorage.removeItem(ID_KEY)
   } catch (e) { /* ignore */ }
   loading.value = true
   try {
-    if (mode.value === 'login') {
-      await auth.login(em, pw)
-    } else {
-      await auth.register(em, pw, displayName.value.trim())
-      toast.success('가입 완료! 환영합니다.')
-    }
-    const redirect = route.query.redirect || '/'
+    await auth.login(id, pw)
+    // 등록인은 모바일 입출고 단말로
+    const redirect = auth.isRegistrar ? '/s' : (route.query.redirect || '/')
     router.replace(redirect)
   } catch (e) {
-    console.error('[Auth] 원본 에러:', e?.message || e)
-    toast.error(krError(e))
+    toast.error(e?.message || '아이디 또는 비밀번호가 올바르지 않습니다.')
   } finally {
     loading.value = false
   }
@@ -79,31 +59,12 @@ async function submit() {
       </div>
 
       <div class="card p-6">
-        <div class="mb-4 flex rounded-lg bg-slate-100 p-1 text-sm font-medium">
-          <button
-            class="flex-1 rounded-md py-1.5 transition"
-            :class="mode === 'login' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'"
-            @click="mode = 'login'"
-          >
-            로그인
-          </button>
-          <button
-            class="flex-1 rounded-md py-1.5 transition"
-            :class="mode === 'register' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'"
-            @click="mode = 'register'"
-          >
-            회원가입
-          </button>
-        </div>
+        <h2 class="mb-4 text-center text-sm font-semibold text-slate-600">로그인</h2>
 
         <form class="space-y-3" @submit.prevent="submit">
-          <div v-if="mode === 'register'">
-            <label class="label">이름</label>
-            <input v-model="displayName" class="input" placeholder="홍길동" />
-          </div>
           <div>
-            <label class="label">이메일</label>
-            <input v-model="email" type="email" class="input" placeholder="you@m-park.co.kr" autocomplete="username" />
+            <label class="label">아이디</label>
+            <input v-model="username" class="input" placeholder="아이디" autocomplete="username" />
           </div>
           <div>
             <label class="label">비밀번호</label>
@@ -114,12 +75,12 @@ async function submit() {
             <label class="flex cursor-pointer items-center gap-1.5"><input v-model="autoLogin" type="checkbox" class="h-4 w-4 rounded border-slate-300" /> 자동 로그인</label>
           </div>
           <button class="btn-primary mt-2 w-full" :disabled="loading">
-            {{ loading ? '처리 중…' : mode === 'login' ? '로그인' : '가입하기' }}
+            {{ loading ? '처리 중…' : '로그인' }}
           </button>
         </form>
 
-        <p v-if="mode === 'register'" class="mt-3 text-center text-[11px] leading-relaxed text-slate-400">
-          가입 시 기본 권한은 <b>일반 사용자</b>입니다.<br />관리자 권한은 관리자에게 요청하세요.
+        <p class="mt-3 text-center text-[11px] leading-relaxed text-slate-400">
+          계정이 필요하면 관리자에게 요청하세요.
         </p>
       </div>
     </div>

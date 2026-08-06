@@ -45,22 +45,25 @@ public class SecurityConfig {
                         (req, res, ex) -> res.sendError(401, "Unauthorized")))
                 .authorizeHttpRequests(auth -> auth
                         // 공개
-                        .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
+                        .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers("/files/quotes/**").authenticated() // 견적 PDF(단가 등 민감) — 인증 필요
                         .requestMatchers("/files/**").permitAll()           // 이미지 등 나머지는 공개
-                        // 관리자 전용 (사용자관리/감사로그/AI사용량)
-                        .requestMatchers("/api/users/**", "/api/audit-logs", "/api/audit/**", "/api/ai-usage/**").hasRole("ADMIN")
-                        // SKU 조회용 POST + 입/출고·이동 (세부 권한은 서비스에서 can_stock 으로 검증)
-                        // ※ 재고조정/실사(/api/stock/adjust)·audit-resolve 는 여기 없음 → 서비스의 isAdmin() + 기본 규칙으로 관리자 전용 유지
+                        // 슈퍼관리자 전용 (사용자관리/감사로그/AI사용량)
+                        .requestMatchers("/api/users/**", "/api/audit-logs", "/api/audit/**", "/api/ai-usage/**").hasRole("SUPER")
+                        // 등록인 이상 허용: 입고/출고 + 챗봇 + SKU 검색용 조회 POST
                         .requestMatchers(HttpMethod.POST,
                                 "/api/chat", "/api/chat/find-similar", "/api/chat/tts",
                                 "/api/skus/page", "/api/skus/page-by-sku", "/api/skus/manage-page", "/api/skus/group-by-complex", "/api/skus/by-ids",
-                                "/api/stock/inbound", "/api/stock/outbound", "/api/stock/transfer",
-                                "/api/movements/*/void", "/api/skus/*/replace-lifecycle").authenticated()
-                        // 그 외 쓰기(생성/수정/삭제) = 관리자
-                        .requestMatchers(HttpMethod.POST, "/api/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole("ADMIN")
+                                "/api/stock/inbound", "/api/stock/outbound").hasAnyRole("SUPER", "MANAGER", "REGISTRAR")
+                        // 매니저 이상: 그 외 재고 조작(이동/조정/실사/검증/취소/연한교체)
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/stock/transfer", "/api/stock/adjust",
+                                "/api/stock/*/verify", "/api/stock/*/audit-resolve", "/api/stock/*/replace-lifecycle",
+                                "/api/movements/*/void").hasAnyRole("SUPER", "MANAGER")
+                        // 그 외 쓰기(생성/수정/삭제) = 매니저 이상
+                        .requestMatchers(HttpMethod.POST, "/api/**").hasAnyRole("SUPER", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/**").hasAnyRole("SUPER", "MANAGER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/**").hasAnyRole("SUPER", "MANAGER")
                         // 나머지(GET 조회) = 로그인 사용자
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

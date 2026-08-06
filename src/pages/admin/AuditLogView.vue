@@ -58,7 +58,7 @@ async function load() {
 }
 onMounted(async () => {
   try {
-    userList.value = (await users.list()).filter((u) => u.role === 'admin')
+    userList.value = await users.list()
   } catch (e) {
     /* 무시 */
   }

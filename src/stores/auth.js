@@ -10,16 +10,24 @@ let initPromise = null
  */
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    user: null,    // { id, email } — 화면 호환용
-    profile: null, // { id, email, displayName, role, canStock, createdAt }
+    user: null,    // { id, username } — 화면 호환용
+    profile: null, // { id, username, email, displayName, role, canStock, createdAt }
     ready: false,
   }),
   getters: {
     isLoggedIn: (s) => !!s.profile,
-    isAdmin: (s) => s.profile?.role === 'admin',
-    canStock: (s) => s.profile?.role === 'admin' || s.profile?.canStock === true,
-    displayName: (s) => s.profile?.displayName || s.profile?.email || '사용자',
-    actor: (s) => ({ uid: s.profile?.id, name: s.profile?.displayName || s.profile?.email || '사용자' }),
+    role: (s) => s.profile?.role || null,
+    isSuper: (s) => s.profile?.role === 'super',
+    isManager: (s) => s.profile?.role === 'manager',
+    isRegistrar: (s) => s.profile?.role === 'registrar',
+    // 백오피스 관리(기준정보/상품/위치/재고조정·실사·이동) = 슈퍼관리자 또는 매니저
+    canManage: (s) => s.profile?.role === 'super' || s.profile?.role === 'manager',
+    // 입/출고 = 세 역할 모두
+    canStock: (s) => ['super', 'manager', 'registrar'].includes(s.profile?.role),
+    // 하위호환(설정 메뉴 = 슈퍼관리자 전용)
+    isAdmin: (s) => s.profile?.role === 'super',
+    displayName: (s) => s.profile?.displayName || s.profile?.username || '사용자',
+    actor: (s) => ({ uid: s.profile?.id, name: s.profile?.displayName || s.profile?.username || '사용자' }),
   },
   actions: {
     /** 앱 시작 시 1회: 토큰으로 세션 복원 */
@@ -42,16 +50,10 @@ export const useAuthStore = defineStore('auth', {
     },
     _setProfile(profile) {
       this.profile = profile || null
-      this.user = profile ? { id: profile.id, email: profile.email } : null
+      this.user = profile ? { id: profile.id, username: profile.username } : null
     },
-    async login(email, password) {
-      const { token, profile } = await api.post('/auth/login', { email, password })
-      setToken(token)
-      this._setProfile(profile)
-      return this.profile
-    },
-    async register(email, password, displayName) {
-      const { token, profile } = await api.post('/auth/register', { email, password, displayName })
+    async login(username, password) {
+      const { token, profile } = await api.post('/auth/login', { username, password })
       setToken(token)
       this._setProfile(profile)
       return this.profile

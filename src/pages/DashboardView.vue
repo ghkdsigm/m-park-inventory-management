@@ -164,9 +164,9 @@ onMounted(async () => {
 })
 
 const cards = computed(() => [
-  { label: '단지', value: stat.value.complexes, icon: '🏢', to: auth.isAdmin ? { name: 'complexes' } : null },
-  { label: '상품', value: stat.value.products, icon: '📦', to: auth.isAdmin ? { name: 'products' } : null },
-  { label: 'SKU', value: stat.value.skus, icon: '🔖', to: auth.isAdmin ? { name: 'skus' } : null },
+  { label: '단지', value: stat.value.complexes, icon: '🏢', to: auth.canManage ? { name: 'complexes' } : null },
+  { label: '상품', value: stat.value.products, icon: '📦', to: auth.canManage ? { name: 'products' } : null },
+  { label: 'SKU', value: stat.value.skus, icon: '🔖', to: auth.canManage ? { name: 'skus' } : null },
   { label: '총 재고', value: stat.value.totalQty.toLocaleString(), icon: '📊', to: { name: 'status' } },
   { label: '재고부족', value: stat.value.low, icon: '⚠️', to: { name: 'status' }, warn: stat.value.low > 0 },
   { label: '품절', value: stat.value.out, icon: '⛔', to: { name: 'status' }, warn: stat.value.out > 0 },

@@ -27,14 +27,21 @@ public class CurrentUser {
         return u == null ? null : u.name();
     }
 
-    public boolean isAdmin() {
+    /** 슈퍼관리자: 사용자관리/감사로그/AI사용량 등 최상위 권한 */
+    public boolean isSuper() {
         AuthUser u = get();
-        return u != null && "admin".equals(u.role());
+        return u != null && "super".equals(u.role());
     }
 
-    /** 입/출고 가능: 관리자 또는 can_stock 권한 보유 */
+    /** 백오피스 관리(기준정보/상품/위치 CRUD, 재고조정·실사·이동): 슈퍼관리자 또는 매니저 */
+    public boolean canManage() {
+        AuthUser u = get();
+        return u != null && ("super".equals(u.role()) || "manager".equals(u.role()));
+    }
+
+    /** 입/출고 가능: 슈퍼관리자·매니저·등록인 모두 */
     public boolean canStock() {
         AuthUser u = get();
-        return u != null && ("admin".equals(u.role()) || u.canStock());
+        return u != null && ("super".equals(u.role()) || "manager".equals(u.role()) || "registrar".equals(u.role()));
     }
 }

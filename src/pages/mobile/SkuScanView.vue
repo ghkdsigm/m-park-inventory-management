@@ -359,7 +359,7 @@ const fmtTime = fmtDateTime
           <p class="mt-1 text-xs text-slate-400">QR 스캔: <span class="font-mono">{{ route.params.code }}</span></p>
         </div>
         <form class="card space-y-3 p-5" @submit.prevent="doLogin">
-          <div><label class="label">이메일</label><input v-model="loginEmail" type="email" class="input" autocomplete="username" /></div>
+          <div><label class="label">아이디</label><input v-model="loginEmail" class="input" autocomplete="username" /></div>
           <div><label class="label">비밀번호</label><input v-model="loginPw" type="password" class="input" autocomplete="current-password" /></div>
           <div class="flex items-center gap-4 pt-0.5 text-sm text-slate-600">
             <label class="flex cursor-pointer items-center gap-1.5"><input v-model="rememberId" type="checkbox" class="h-4 w-4 rounded border-slate-300" /> 아이디저장</label>
@@ -482,7 +482,7 @@ const fmtTime = fmtDateTime
       <div v-else class="card p-4 text-center text-sm text-slate-400">입·출고 권한이 없습니다. 관리자에게 문의하세요.</div>
 
       <!-- 조정/실사 (관리자) -->
-      <div v-if="auth.isAdmin && selectedStock" class="card p-4">
+      <div v-if="auth.canManage && selectedStock" class="card p-4">
         <p class="mb-2 text-sm font-semibold text-slate-700">재고조정 / 실사 <span class="badge bg-slate-100 text-[10px] text-slate-400">관리자</span></p>
         <p class="mb-2 text-xs text-slate-500">대상: <b>{{ selectedStock.complexName }}<span v-if="selectedStock.locationLabel"> › {{ selectedStock.locationLabel }}</span></b> (현재 {{ selectedStock.qty }}개)</p>
         <div class="flex items-center gap-2"><span class="text-sm text-slate-400">목표 수량</span><input v-model.number="setQty" type="number" min="0" class="input w-24 text-center" /></div>

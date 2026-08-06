@@ -203,7 +203,7 @@ const view = computed(() => {
           <p class="mt-1 text-xs text-slate-400">로그인 후 제품을 찾을 수 있어요</p>
         </div>
         <form class="card space-y-3 p-5" @submit.prevent="doLogin">
-          <div><label class="label">이메일</label><input v-model="loginEmail" type="email" class="input" autocomplete="username" /></div>
+          <div><label class="label">아이디</label><input v-model="loginEmail" class="input" autocomplete="username" /></div>
           <div><label class="label">비밀번호</label><input v-model="loginPw" type="password" class="input" autocomplete="current-password" /></div>
           <div class="flex items-center gap-4 pt-0.5 text-sm text-slate-600">
             <label class="flex cursor-pointer items-center gap-1.5"><input v-model="rememberId" type="checkbox" class="h-4 w-4 rounded border-slate-300" /> 아이디저장</label>

@@ -120,7 +120,7 @@ public class StockService {
 
     /* ===================== 조정 / 실사 ===================== */
     public StockResult adjust(AdjustRequest r) {
-        if (!currentUser.isAdmin()) throw ApiException.forbidden("재고조정/실사 권한이 없습니다.");
+        if (!currentUser.canManage()) throw ApiException.forbidden("재고조정/실사 권한이 없습니다.");
         StockResult dup = idemLookup(r.requestId());
         if (dup != null) return dup; // 중복 요청 — 이미 반영됨
         String type = "audit".equals(r.type()) ? "audit" : "adjust";
@@ -160,7 +160,7 @@ public class StockService {
 
     /* ===================== 실사 오차 정상처리 ===================== */
     public void resolveAudit(String stockId, String reason) {
-        if (!currentUser.isAdmin()) throw ApiException.forbidden("실사 정상처리 권한이 없습니다.");
+        if (!currentUser.canManage()) throw ApiException.forbidden("실사 정상처리 권한이 없습니다.");
         if (isBlank(reason)) throw ApiException.badRequest("정상처리 사유를 입력하세요.");
         Stock st = stockRepo.findByIdForUpdate(stockId)
                 .orElseThrow(() -> ApiException.notFound("재고를 찾을 수 없습니다."));
@@ -181,7 +181,7 @@ public class StockService {
 
     /* ===================== 재고이동 (재고행 → 도착 위치) ===================== */
     public TransferResult transfer(TransferRequest r) {
-        if (!currentUser.canStock()) throw ApiException.forbidden("재고이동 권한이 없습니다. 관리자에게 문의하세요.");
+        if (!currentUser.canManage()) throw ApiException.forbidden("재고이동 권한이 없습니다. 관리자에게 문의하세요.");
         if (!isBlank(r.requestId()) && idemRepo.existsById(r.requestId()))
             throw ApiException.badRequest("이미 처리된 이동 요청입니다. 재고를 새로고침해 확인하세요.");
         int qty = nz(r.qty());
