@@ -87,4 +87,10 @@ public class QuoteController {
     public void link(@PathVariable String itemId, @RequestBody LinkRequest req) {
         service.linkItem(itemId, req == null ? null : req.skuId());
     }
+
+    /** 이 견적의 SKU 연결/해제 로그 (누가/언제). */
+    @GetMapping("/{id}/link-logs")
+    public List<QuoteDtos.LinkLog> linkLogs(@PathVariable String id) {
+        return service.linkLogs(id);
+    }
 }

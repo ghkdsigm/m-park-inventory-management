@@ -56,4 +56,7 @@ public final class QuoteDtos {
 
     /** 견적 품목 ↔ SKU 연결/해제 요청. */
     public record LinkRequest(String skuId) {}
+
+    /** SKU 연결 로그 한 줄 — 누가/언제 어떤 견적품목을 어떤 SKU에 연결(또는 해제)했는지 (감사로그 기반). */
+    public record LinkLog(LocalDateTime at, String byName, String action, String itemName, String skuLabel) {}
 }

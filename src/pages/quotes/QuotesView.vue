@@ -219,8 +219,27 @@ async function removeQuote(item) {
   }
 }
 
+/* ---------- SKU 연결 로그 ---------- */
+const linkLogModal = ref(false)
+const linkLogs = ref([])
+const linkLogLoading = ref(false)
+async function openLinkLogs() {
+  if (!detail.value) return
+  linkLogModal.value = true
+  linkLogLoading.value = true
+  try {
+    linkLogs.value = await quotes.linkLogs(detail.value.id)
+  } catch (e) {
+    toast.error('연결 로그 조회 실패: ' + (e.message || e.code))
+    linkLogs.value = []
+  } finally {
+    linkLogLoading.value = false
+  }
+}
+
 /* ---------- 유틸 ---------- */
 function fmt(n) { return (Number(n) || 0).toLocaleString() }
+function fmtDt(s) { if (!s) return '-'; const d = new Date(s); return isNaN(d) ? s : d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) }
 
 // 견적 PDF는 인증 필요(/files/quotes/**) → 토큰 실은 fetch로 받아 새 탭에서 열기
 async function openPdf(url) {
@@ -279,6 +298,7 @@ async function openPdf(url) {
             <th class="px-4 py-2.5 font-semibold">견적일</th>
             <th class="px-4 py-2.5 font-semibold">업체</th>
             <th class="px-4 py-2.5 font-semibold">단지명</th>
+            <th class="px-4 py-2.5 font-semibold">등록자</th>
             <th class="px-4 py-2.5 text-right font-semibold">품목수</th>
             <th class="px-4 py-2.5 text-right font-semibold">합계(VAT포함)</th>
             <th class="px-4 py-2.5 text-right font-semibold">관리</th>
@@ -292,6 +312,7 @@ async function openPdf(url) {
               <span v-if="q.complexName" class="badge bg-brand-50 text-brand-700">{{ q.complexName }}</span>
               <span v-else class="text-slate-400">-</span>
             </td>
+            <td class="px-4 py-3 text-slate-600">{{ q.uploadedByName || '-' }}</td>
             <td class="px-4 py-3 text-right">{{ q.itemCount }}건</td>
             <td class="px-4 py-3 text-right font-medium">{{ fmt(q.totalAmount) }}원</td>
             <td class="px-4 py-3 text-right whitespace-nowrap">
@@ -421,12 +442,46 @@ async function openPdf(url) {
           </tbody>
         </table>
       </div>
-      <div class="text-right">
+      <div class="flex items-center justify-end gap-2">
+        <button type="button" class="btn-ghost btn-sm" @click="openLinkLogs">🔗 SKU 연결 로그</button>
         <button v-if="detail.fileUrl" type="button" class="btn-ghost btn-sm" @click="openPdf(detail.fileUrl)">원본 PDF 열기</button>
       </div>
     </div>
     <template #footer>
       <button class="btn-ghost" @click="detailModal = false">닫기</button>
+    </template>
+  </BaseModal>
+
+  <!-- SKU 연결 로그 모달 -->
+  <BaseModal v-model="linkLogModal" title="SKU 연결 로그" size="lg">
+    <div v-if="linkLogLoading" class="p-6 text-center text-sm text-slate-400">불러오는 중…</div>
+    <div v-else-if="!linkLogs.length" class="p-8 text-center text-sm text-slate-400">SKU 연결/해제 기록이 없습니다.</div>
+    <div v-else class="max-h-[55vh] overflow-auto scrollbar-slim rounded-lg border border-slate-100">
+      <table class="w-full min-w-[560px] text-sm">
+        <thead class="sticky top-0 border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
+          <tr>
+            <th class="px-3 py-2 font-semibold">일시</th>
+            <th class="px-3 py-2 font-semibold">작업자</th>
+            <th class="px-3 py-2 font-semibold">작업</th>
+            <th class="px-3 py-2 font-semibold">견적 품목</th>
+            <th class="px-3 py-2 font-semibold">연결 SKU</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          <tr v-for="(l, i) in linkLogs" :key="i">
+            <td class="px-3 py-2 whitespace-nowrap text-slate-500">{{ fmtDt(l.at) }}</td>
+            <td class="px-3 py-2 font-medium text-slate-700">{{ l.byName || '-' }}</td>
+            <td class="px-3 py-2">
+              <span class="badge" :class="l.action === '견적품목 연결' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'">{{ l.action === '견적품목 연결' ? '연결' : '해제' }}</span>
+            </td>
+            <td class="px-3 py-2 text-slate-600">{{ l.itemName }}</td>
+            <td class="px-3 py-2 text-slate-600">{{ l.skuLabel }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <template #footer>
+      <button class="btn-ghost" @click="linkLogModal = false">닫기</button>
     </template>
   </BaseModal>
 

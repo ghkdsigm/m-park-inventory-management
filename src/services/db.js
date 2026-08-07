@@ -49,6 +49,8 @@ export const quotes = {
   unmatched: () => api.get('/quotes/unmatched'),
   // 견적 품목 ↔ SKU 연결/해제
   linkItem: (itemId, skuId) => api.post(`/quotes/items/${itemId}/link`, { skuId }),
+  // 이 견적의 SKU 연결/해제 로그(누가/언제)
+  linkLogs: (id) => api.get(`/quotes/${id}/link-logs`),
 }
 
 /* ===================== AI 사용량(토큰) 모니터링 ===================== */

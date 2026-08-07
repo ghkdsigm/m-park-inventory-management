@@ -1,6 +1,8 @@
 package com.mpark.wms.quote;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.mpark.wms.audit.AuditLog;
+import com.mpark.wms.audit.AuditLogRepository;
 import com.mpark.wms.audit.AuditService;
 import com.mpark.wms.chat.ChatQueryService;
 import com.mpark.wms.common.ApiException;
@@ -38,6 +40,7 @@ public class QuoteService {
     private final ChatQueryService chatQueryService; // SKU 유사 검색 재활용
     private final StorageService storageService;
     private final AuditService auditService;
+    private final AuditLogRepository auditLogRepo;
     private final CurrentUser currentUser;
 
     @jakarta.persistence.PersistenceContext
@@ -295,6 +298,46 @@ public class QuoteService {
         itemRepo.save(it);
         auditService.log("견적", sid != null ? "견적품목 연결" : "견적품목 연결해제",
                 it.getId(), it.getRawName(), it.getRawName(), null, "sku=" + nz(skuId));
+    }
+
+    /** 견적의 SKU 연결/해제 로그 — 누가/언제/어떤 품목을 어떤 SKU에 (감사로그 기반, 최신순). */
+    @Transactional(readOnly = true)
+    public List<LinkLog> linkLogs(String quoteId) {
+        List<QuoteItem> items = itemRepo.findByQuoteIdOrderByLineNo(quoteId);
+        if (items.isEmpty()) return List.of();
+        List<String> ids = items.stream().map(QuoteItem::getId).toList();
+        List<AuditLog> logs = auditLogRepo.findByModuleAndActionStartingWithAndRowIdInOrderByAtDesc("견적", "견적품목 연결", ids);
+        List<LinkLog> out = new ArrayList<>();
+        for (AuditLog l : logs) {
+            String skuId = extractSkuId(l.getAfterValue());
+            String skuLabel = skuId == null ? "(연결 해제)" : skuLabel(skuId);
+            out.add(new LinkLog(l.getAt(), l.getByName(), l.getAction(), l.getName(), skuLabel));
+        }
+        return out;
+    }
+
+    /** afterValue "sku=xxx" 에서 skuId 추출. 빈 값(해제)이면 null. */
+    private static String extractSkuId(String afterValue) {
+        if (afterValue == null) return null;
+        int i = afterValue.indexOf("sku=");
+        if (i < 0) return null;
+        String v = afterValue.substring(i + 4).trim();
+        return v.isEmpty() ? null : v;
+    }
+
+    /** skuId → "품명 규격 (코드)" 표시 라벨. 조회 실패 시 id 그대로. */
+    private String skuLabel(String skuId) {
+        try {
+            Object[] r = (Object[]) em.createNativeQuery(
+                    "SELECT product_name, spec, code FROM skus WHERE id = ?1").setParameter(1, skuId).getSingleResult();
+            String pn = r[0] == null ? "" : r[0].toString();
+            String sp = r[1] == null ? "" : r[1].toString();
+            String code = r[2] == null ? "" : r[2].toString();
+            String label = (pn + (sp.isBlank() ? "" : " " + sp)).trim();
+            return code.isBlank() ? label : (label.isBlank() ? code : label + " (" + code + ")");
+        } catch (Exception e) {
+            return skuId;
+        }
     }
 
     /** a 견적이 b 견적보다 최신인가(견적일 우선, 동률/무일자면 생성시각). */
