@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
-import { users } from '@/services/db'
+import { users, complexes } from '@/services/db'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -12,6 +12,7 @@ const toast = useToast()
 const confirm = ref(null)
 const list = ref([])
 const loading = ref(true)
+const complexList = ref([]) // 관리단지 선택 옵션
 
 const ROLES = [
   { value: 'super', label: '슈퍼관리자', desc: '전체 권한 (사용자관리·감사로그·AI사용량 포함)' },
@@ -31,22 +32,29 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+onMounted(async () => {
+  load()
+  try {
+    complexList.value = await complexes.list()
+  } catch (e) {
+    /* 단지 목록 실패는 치명적이지 않음 — 관리단지는 직접 입력 가능 */
+  }
+})
 
 /* 등록/수정 모달 */
 const modal = ref(false)
 const editing = ref(null) // null=신규, 아니면 대상 사용자
-const form = reactive({ username: '', displayName: '', email: '', password: '', role: 'registrar' })
+const form = reactive({ username: '', displayName: '', jobTitle: '', managedComplex: '', email: '', password: '', role: 'registrar' })
 const saving = ref(false)
 
 function openCreate() {
   editing.value = null
-  Object.assign(form, { username: '', displayName: '', email: '', password: '', role: 'registrar' })
+  Object.assign(form, { username: '', displayName: '', jobTitle: '', managedComplex: '', email: '', password: '', role: 'registrar' })
   modal.value = true
 }
 function openEdit(u) {
   editing.value = u
-  Object.assign(form, { username: u.username, displayName: u.displayName || '', email: u.email || '', password: '', role: u.role })
+  Object.assign(form, { username: u.username, displayName: u.displayName || '', jobTitle: u.jobTitle || '', managedComplex: u.managedComplex || '', email: u.email || '', password: '', role: u.role })
   modal.value = true
 }
 
@@ -58,6 +66,8 @@ async function save() {
     const payload = {
       username: form.username.trim(),
       displayName: form.displayName.trim(),
+      jobTitle: form.jobTitle.trim(),
+      managedComplex: form.managedComplex.trim(),
       email: form.email.trim(),
       role: form.role,
     }
@@ -110,6 +120,8 @@ async function remove(u) {
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
             <th class="px-4 py-2.5 font-semibold">이름</th>
+            <th class="px-4 py-2.5 font-semibold">직급</th>
+            <th class="px-4 py-2.5 font-semibold">관리단지</th>
             <th class="px-4 py-2.5 font-semibold">아이디</th>
             <th class="px-4 py-2.5 font-semibold">이메일</th>
             <th class="px-4 py-2.5 font-semibold">역할</th>
@@ -122,6 +134,8 @@ async function remove(u) {
               {{ u.displayName }}
               <span v-if="u.id === auth.user.uid" class="badge bg-slate-100 text-[10px] text-slate-400">나</span>
             </td>
+            <td class="px-4 py-3 text-slate-600">{{ u.jobTitle || '—' }}</td>
+            <td class="px-4 py-3 text-slate-600">{{ u.managedComplex || '—' }}</td>
             <td class="px-4 py-3 text-slate-600">{{ u.username }}</td>
             <td class="px-4 py-3 text-slate-400">{{ u.email || '—' }}</td>
             <td class="px-4 py-3">
@@ -141,6 +155,19 @@ async function remove(u) {
         <div>
           <label class="label">이름</label>
           <input v-model="form.displayName" class="input" placeholder="홍길동" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label">직급</label>
+            <input v-model="form.jobTitle" class="input" placeholder="소장 / 시설과장 등" />
+          </div>
+          <div>
+            <label class="label">관리단지</label>
+            <input v-model="form.managedComplex" class="input" list="complex-options" placeholder="랜드 / 허브 등" />
+            <datalist id="complex-options">
+              <option v-for="c in complexList" :key="c.id" :value="c.name" />
+            </datalist>
+          </div>
         </div>
         <div>
           <label class="label">아이디 <span class="text-rose-500">*</span></label>

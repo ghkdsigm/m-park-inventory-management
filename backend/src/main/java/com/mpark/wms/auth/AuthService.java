@@ -66,6 +66,8 @@ public class AuthService {
         p.setEmail(email);
         p.setPasswordHash(encoder.encode(r.password()));
         p.setDisplayName(isBlank(r.displayName()) ? username : r.displayName().trim());
+        p.setJobTitle(nz(r.jobTitle()));
+        p.setManagedComplex(nz(r.managedComplex()));
         p.setRole(role);
         p.setCanStock(true); // 세 역할 모두 입출고 가능(하위호환 컬럼)
         repo.save(p);
@@ -87,6 +89,8 @@ public class AuthService {
             throw ApiException.badRequest("이미 사용 중인 이메일입니다.");
         p.setEmail(email);
         if (!isBlank(r.displayName())) p.setDisplayName(r.displayName().trim());
+        if (r.jobTitle() != null) p.setJobTitle(r.jobTitle().trim());
+        if (r.managedComplex() != null) p.setManagedComplex(r.managedComplex().trim());
         if (!isBlank(r.role())) {
             String role = validRole(r.role());
             if (id.equals(currentUser.id()) && !"super".equals(role))
@@ -119,10 +123,12 @@ public class AuthService {
     }
 
     static ProfileDto toDto(Profile p) {
-        return new ProfileDto(p.getId(), p.getUsername(), p.getEmail(), p.getDisplayName(), p.getRole(), p.isCanStock(), p.getCreatedAt());
+        return new ProfileDto(p.getId(), p.getUsername(), p.getEmail(), p.getDisplayName(),
+                p.getJobTitle(), p.getManagedComplex(), p.getRole(), p.isCanStock(), p.getCreatedAt());
     }
 
     private static boolean isBlank(String s) { return s == null || s.isBlank(); }
+    private static String nz(String s) { return s == null ? "" : s.trim(); }
     private static String norm(String s) { return s == null ? "" : s.trim().replaceAll("\\s", ""); }
     /** 이메일 정규화: 공백 제거 후 비어있으면 null(선택 항목). */
     private static String normEmail(String s) { String e = norm(s); return e.isBlank() ? null : e; }

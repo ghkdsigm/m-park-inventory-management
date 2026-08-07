@@ -31,6 +31,9 @@ public class Profile {
     private String passwordHash;
     private String displayName;
 
+    private String jobTitle = "";       // 직급 (소장/시설과장/미화실장 등) — column: job_title
+    private String managedComplex = "";  // 관리단지 이름 (랜드/허브 등) — column: managed_complex
+
     private String role = "registrar"; // super | manager | registrar
     private boolean canStock = true;   // (역할로 대체된 하위호환 컬럼)
 
