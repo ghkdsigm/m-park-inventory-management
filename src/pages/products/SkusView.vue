@@ -441,7 +441,7 @@ async function printSelected() {
         </div>
         <div>
           <label class="label">상품 * <span class="text-slate-400">({{ filteredProducts.length }}건)</span></label>
-          <AppSelect v-model="form.productId" class="w-full" :disabled="!!editing">
+          <AppSelect v-model="form.productId" fluid class="w-full" :disabled="!!editing">
             <option value="">상품 선택</option>
             <option v-for="p in (editing ? productList : filteredProducts)" :key="p.id" :value="p.id">{{ p.name }} ({{ p.code }}{{ p.pathLabel ? ' · ' + p.pathLabel : '' }})</option>
           </AppSelect>

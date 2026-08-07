@@ -164,12 +164,12 @@ onMounted(async () => {
 })
 
 const cards = computed(() => [
-  { label: '단지', value: stat.value.complexes, icon: '🏢', to: auth.canManage ? { name: 'complexes' } : null },
-  { label: '상품', value: stat.value.products, icon: '📦', to: auth.canManage ? { name: 'products' } : null },
-  { label: 'SKU', value: stat.value.skus, icon: '🔖', to: auth.canManage ? { name: 'skus' } : null },
-  { label: '총 재고', value: stat.value.totalQty.toLocaleString(), icon: '📊', to: { name: 'status' } },
-  { label: '재고부족', value: stat.value.low, icon: '⚠️', to: { name: 'status' }, warn: stat.value.low > 0 },
-  { label: '품절', value: stat.value.out, icon: '⛔', to: { name: 'status' }, warn: stat.value.out > 0 },
+  { label: '단지', desc: '등록된 사업장 수', value: stat.value.complexes, icon: '🏢', to: auth.canManage ? { name: 'complexes' } : null },
+  { label: '상품', desc: '품목 종류 수', value: stat.value.products, icon: '📦', to: auth.canManage ? { name: 'products' } : null },
+  { label: 'SKU', desc: '규격·색상별 변형 수', value: stat.value.skus, icon: '🔖', to: auth.canManage ? { name: 'skus' } : null },
+  { label: '총 재고', desc: '전 위치 수량 합계', value: stat.value.totalQty.toLocaleString(), icon: '📊', to: { name: 'status' } },
+  { label: '재고부족', desc: '안전재고 미만 재고행', value: stat.value.low, icon: '⚠️', to: { name: 'status' }, warn: stat.value.low > 0 },
+  { label: '품절', desc: '수량 0인 재고행(SKU×위치)', value: stat.value.out, icon: '⛔', to: { name: 'status' }, warn: stat.value.out > 0 },
 ])
 
 const COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6']
@@ -221,7 +221,7 @@ async function openProductDetail(productId) {
 
 <template>
   <div>
-    <PageHeader :title="`안녕하세요, ${auth.displayName}님`" subtitle="엠파크 WMS 재고 현황 요약" />
+    <PageHeader :title="`안녕하세요, ${auth.displayName}님`" subtitle="SKMS 재고 현황 요약" />
 
     <div v-if="loading" class="card p-10 text-center text-sm text-slate-400">불러오는 중…</div>
     <template v-else>
@@ -235,7 +235,8 @@ async function openProductDetail(productId) {
         >
           <div class="mb-1 text-xl">{{ c.icon }}</div>
           <p class="text-2xl font-extrabold" :class="c.warn ? 'text-rose-500' : 'text-slate-800'">{{ c.value }}</p>
-          <p class="text-xs text-slate-400">{{ c.label }}</p>
+          <p class="text-xs font-medium text-slate-500">{{ c.label }}</p>
+          <p v-if="c.desc" class="mt-0.5 text-[10px] leading-tight text-slate-400">{{ c.desc }}</p>
         </button>
       </div>
 

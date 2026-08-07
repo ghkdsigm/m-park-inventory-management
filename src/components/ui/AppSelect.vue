@@ -14,6 +14,9 @@ const props = defineProps({
   modelValue: { type: [String, Number, Boolean, null], default: '' },
   disabled: { type: Boolean, default: false },
   placeholder: { type: String, default: '선택' },
+  // true 면 최소너비 측정을 끄고 컨테이너(w-full)를 그대로 따른다(라벨은 truncate).
+  // 옵션 텍스트가 길고 많은 셀렉트가 폭을 넘어 늘어나는 것 방지.
+  fluid: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'change'])
 const slots = useSlots()
@@ -62,6 +65,7 @@ function selectedLabel() {
 const minW = ref(0)
 let _ctx = null
 function measure() {
+  if (props.fluid) { if (minW.value !== 0) minW.value = 0; return }
   const btn = btnRef.value
   if (!btn) return
   const opts = options()

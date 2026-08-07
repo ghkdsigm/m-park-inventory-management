@@ -141,7 +141,7 @@ async function doLogout() {
       <div class="flex items-center gap-2 px-5 py-4">
         <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">M</div>
         <div>
-          <p class="text-sm font-bold leading-tight text-slate-800">엠파크 WMS</p>
+          <p class="text-sm font-bold leading-tight text-slate-800">엠파크 SKMS</p>
           <p class="text-[11px] text-slate-400">재고관리시스템</p>
         </div>
       </div>
@@ -181,7 +181,7 @@ async function doLogout() {
       <header class="no-print flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
         <div class="flex items-center gap-2">
           <div class="flex h-7 w-7 items-center justify-center rounded-md bg-brand-600 text-xs font-bold text-white">M</div>
-          <span class="text-sm font-bold text-slate-800">엠파크 WMS</span>
+          <span class="text-sm font-bold text-slate-800">엠파크 SKMS</span>
         </div>
         <span class="badge" :class="auth.isAdmin ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-500'">{{ auth.isSuper ? '슈퍼관리자' : '매니저' }}</span>
       </header>
