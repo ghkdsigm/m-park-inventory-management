@@ -185,8 +185,10 @@ async function selectItem(x) {
   const skuId = x.skuId || x.id
   movements.value = skuId ? await listMovements(skuId, 6) : []
   if (skuId) { try { quoteInfo.value = await quotes.forSku(skuId) } catch (_) { quoteInfo.value = null } }
-  // 입고: 선택 SKU의 현재 보관위치(재고>0)만 조회해 참고 표시
+  // 입고: 단지만 SKU에 맞춰 자동 세팅(허브 SKU를 타워에 못 넣게). 구역/상세구역/위치는 사용자가 직접 선택.
   if (isInbound.value && x.id) {
+    inComplex.value = x.complexId || ''
+    inZone.value = ''; inSub.value = ''; inLoc.value = '' // 하위는 항상 "선택" 상태로(자동선택 안 함)
     try { const r = await skus.page({ skuId: x.id, pageSize: 20 }); selectedLocs.value = (r.rows || []).filter((row) => row.qty > 0) } catch (_) { selectedLocs.value = [] }
   }
 }
@@ -224,7 +226,7 @@ async function submit() {
     }
     opRid.value = '' // 성공 → 다음 처리용 ID 초기화
     toast.success(`${cfg.value.title} 완료 · 재고 ${r.before} → ${r.after}개`)
-    if (isInbound.value) { await loadVariants(); await loadInboundLocations(); selected.value = null }
+    if (isInbound.value) { await loadVariants(); inZone.value = ''; inSub.value = ''; inLoc.value = ''; selected.value = null }
     else { await fetchRows(); const again = rows.value.find((s) => s.stockId === selected.value?.stockId); selected.value = again || null }
   } catch (e) {
     toast.error(e.message || '처리 실패')
@@ -292,6 +294,7 @@ async function confirmVoid() {
               :class="selected?.id === s.id ? 'bg-brand-50' : ''" @click="selectItem(s)">
               <img :src="resolveImage(s)" class="h-10 w-10 shrink-0 rounded-lg border border-slate-100 object-cover" alt="" />
               <div class="min-w-0 flex-1">
+                <span v-if="s.complexName" class="badge bg-emerald-50 text-emerald-700">{{ s.complexName }}</span>
                 <span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span>
                 <span class="ml-1 text-sm font-medium text-slate-700">{{ s.productName }}</span>
                 <p class="truncate text-xs text-slate-400">{{ specText(s) }}</p>
@@ -350,8 +353,8 @@ async function confirmVoid() {
 
             <!-- 입고: 보관위치(필수) -->
             <div v-if="isInbound" class="my-3 rounded-lg border border-slate-200 p-3">
-              <p class="mb-2 text-xs font-semibold text-slate-500">보관위치 <span class="text-rose-500">*</span> <span class="font-normal text-slate-400">(입고는 위치 필수)</span></p>
-              <AppSelect v-model="inComplex" class="mb-2 w-full">
+              <p class="mb-2 text-xs font-semibold text-slate-500">보관위치 <span class="text-rose-500">*</span> <span class="font-normal text-slate-400">(단지는 SKU에 맞춰 자동)</span></p>
+              <AppSelect v-model="inComplex" class="mb-2 w-full" :disabled="!!selected?.complexId">
                 <option value="">단지 선택</option>
                 <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
               </AppSelect>

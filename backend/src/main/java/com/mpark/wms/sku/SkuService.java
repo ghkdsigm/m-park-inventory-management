@@ -114,6 +114,8 @@ public class SkuService {
 
     private void apply(Sku s, SkuRequest r, Product product) {
         s.setProductId(r.productId() != null ? r.productId() : s.getProductId());
+        if (r.complexId() != null) s.setComplexId(r.complexId());
+        if (r.complexName() != null) s.setComplexName(nz(r.complexName()));
         s.setProductName(nz(r.productName()));
         s.setSpec(nz(r.spec()));
         s.setColor(nz(r.color()));

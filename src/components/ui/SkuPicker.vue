@@ -14,6 +14,8 @@ const props = defineProps({
   initialLabel: { type: String, default: '' }, // 이미 아는 라벨이 있으면 조회 생략
   placeholder: { type: String, default: '— 미연결 —' },
   disabled: { type: Boolean, default: false },
+  defaultQuery: { type: String, default: '' },   // 열 때 자동 검색어(견적 품목명 등)
+  filterComplex: { type: String, default: '' },  // 이 단지 SKU를 상단 우선 정렬
 })
 const emit = defineEmits(['update:modelValue', 'change'])
 
@@ -27,7 +29,7 @@ const menuRef = ref(null)
 const searchRef = ref(null)
 const menuStyle = ref({})
 
-function labelOf(s) { return s ? `${s.code} · ${s.productName}${s.spec ? ' (' + s.spec + ')' : ''}` : '' }
+function labelOf(s) { return s ? `${s.complexName ? '[' + s.complexName + '] ' : ''}${s.code} · ${s.productName}${s.spec ? ' (' + s.spec + ')' : ''}` : '' }
 
 // 선택된 SKU 라벨 — initialLabel 있으면 그걸, 없으면 id 로 1건 조회
 async function resolveSelected() {
@@ -42,15 +44,22 @@ watch(() => props.initialLabel, (v) => { if (v && props.modelValue) selectedLabe
 let searchTimer = null
 async function fetchList() {
   listing.value = true
-  try { const r = await skus.managePage({ search: q.value.trim(), page: 1, pageSize: 20 }); results.value = r.rows || [] }
-  catch (_) { results.value = [] } finally { listing.value = false }
+  try {
+    const r = await skus.managePage({ search: q.value.trim(), page: 1, pageSize: 20 })
+    let rows = r.rows || []
+    if (props.filterComplex) {  // 선택 단지 SKU를 상단으로
+      const cx = props.filterComplex
+      rows = [...rows].sort((a, b) => (b.complexName === cx) - (a.complexName === cx))
+    }
+    results.value = rows
+  } catch (_) { results.value = [] } finally { listing.value = false }
 }
 watch(q, () => { clearTimeout(searchTimer); searchTimer = setTimeout(fetchList, 300) })
 
 async function toggle() {
   if (props.disabled) return
   open.value = !open.value
-  if (open.value) { q.value = ''; await fetchList(); await nextTick(); position(); searchRef.value?.focus() }
+  if (open.value) { q.value = props.defaultQuery || ''; await fetchList(); await nextTick(); position(); searchRef.value?.focus() }
 }
 function position() {
   const el = btnRef.value
@@ -129,7 +138,10 @@ onBeforeUnmount(() => {
           :class="s.id === modelValue ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-slate-50'"
           @click.stop="pick(s)"
         >
-          <span class="font-medium">{{ s.code }} · {{ s.productName }}</span>
+          <span class="font-medium">
+            <span v-if="s.complexName" class="badge mr-1 bg-brand-50 text-[10px] text-brand-700">{{ s.complexName }}</span>
+            {{ s.code }} · {{ s.productName }}
+          </span>
           <span v-if="s.spec" class="text-[11px] text-slate-400">{{ s.spec }}</span>
         </button>
         <div v-if="!listing && !results.length" class="px-3 py-3 text-center text-sm text-slate-300">검색 결과 없음</div>

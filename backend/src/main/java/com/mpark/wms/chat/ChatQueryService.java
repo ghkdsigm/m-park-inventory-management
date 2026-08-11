@@ -26,7 +26,7 @@ public class ChatQueryService {
         String like = "%" + safeLower(query) + "%";
 
         List<Object[]> rows = em.createQuery(
-                "SELECT s.id, s.code, s.productName, s.spec, s.color, s.pathLabel, s.price, s.safetyStock " +
+                "SELECT s.id, s.code, s.productName, s.spec, s.color, s.pathLabel, s.price, s.safetyStock, s.complexName " +
                 "FROM Sku s WHERE LOWER(s.code) LIKE :q OR LOWER(s.productName) LIKE :q " +
                 "OR LOWER(s.spec) LIKE :q OR LOWER(s.color) LIKE :q OR LOWER(s.pathLabel) LIKE :q " +
                 "ORDER BY s.code", Object[].class)
@@ -68,6 +68,7 @@ public class ChatQueryService {
             m.put("pathLabel", nz(r[5]));
             m.put("price", r[6]);
             m.put("safetyStock", r[7]);
+            m.put("complexName", nz(r[8]));
             m.put("totalQty", totalById.getOrDefault(id, 0));
             m.put("stocks", stById.getOrDefault(id, List.of())); // 출고·이동 시 stockId 로 사용
             out.add(m);

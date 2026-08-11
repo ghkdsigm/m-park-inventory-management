@@ -43,7 +43,7 @@ public final class SkuDtos {
 
     /** SKU 단위로 묶은 한 행 = SKU 변형 필드 + 전 위치 합산 재고. (입출고 통합조회 좌측 목록) */
     public record SkuAggRow(
-            String skuId, String code, String productId, String productName,
+            String skuId, String code, String productId, String productName, String complexName,
             String spec, String color, String releaseYear, String productionYear, String purpose,
             String imageUrl, String productMainImageUrl, BigDecimal price, int safetyStock,
             String categoryId, String productCodeId, String productDetailId, String pathLabel,

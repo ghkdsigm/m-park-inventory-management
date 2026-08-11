@@ -24,6 +24,8 @@ public class Sku extends BaseEntity {
     private String code;
 
     private String productId;
+    private String complexId;            // 단지 귀속 (같은 품목·규격도 단지별 별도 SKU)
+    private String complexName = "";
     private String productName = "";
     private String spec = "";
     private String color = "";

@@ -113,6 +113,7 @@ async function onFile(e) {
     }))
     reviewModal.value = true
     toast.success(`추출 완료 · 품목 ${form.items.length}건`)
+    autoLinkByComplex() // 단지 자동매칭이 되면 즉시 연결
   } catch (e) {
     toast.error('견적서 추출 실패: ' + (e.message || e.code))
   } finally {
@@ -126,10 +127,32 @@ function matchComplex(site) {
   return complexList.value.find((c) => c.name && (s.includes(c.name) || c.name.includes(s))) || null
 }
 
-// 현장 단지 선택 시 이름도 동기화
+// 현장 단지 선택 시 이름 동기화 + 자동연결
 function onComplexChange() {
   const c = complexList.value.find((x) => x.id === form.complexId)
   form.complexName = c ? c.name : ''
+  autoLinkByComplex()
+}
+
+// (품목+규격) 정규화 키 — "A-72 - 2ea(1세트수량)" → "a-72" 접미 제거, 공백/대소문자 무시
+function skuKey(name, spec) {
+  const bs = String(spec || '').replace(/\s*-\s*\d+ea\(1세트수량\)\s*$/, '')
+  return (String(name || '') + '|' + bs).replace(/\s+/g, '').toLowerCase()
+}
+// 선택 단지의 SKU를 불러와, 품목+규격 정확 일치 품목은 자동 연결
+async function autoLinkByComplex() {
+  if (!form.complexId || !form.items.length) return
+  try {
+    const r = await skus.managePage({ complexId: form.complexId, page: 1, pageSize: 1000 })
+    const map = new Map()
+    for (const s of (r.rows || [])) map.set(skuKey(s.productName, s.spec), s)
+    let n = 0
+    for (const it of form.items) {
+      const hit = map.get(skuKey(it.rawName, it.spec))
+      if (hit) { it.skuId = hit.id; it.suggested = true; it.suggestedSkuId = hit.id; it.autoLinked = true; n++ }
+    }
+    if (n) toast.success(`단지 자동연결 ${n}건`)
+  } catch (_) { /* 무시 */ }
 }
 
 /* 계산금액 & 불일치(AI 오추출 검토용) */
@@ -381,7 +404,7 @@ async function openPdf(url) {
               <td class="px-2 py-2 text-right tabular-nums text-slate-500">{{ fmt(it.vatAmount) }}</td>
               <td class="px-2 py-2">
                 <div class="flex items-center gap-1">
-                  <SkuPicker v-model="it.skuId" :initial-label="it.suggestedSkuLabel || ''" class="min-w-[200px]" placeholder="— 새 제품(미연결) —" />
+                  <SkuPicker v-model="it.skuId" :initial-label="it.suggestedSkuLabel || ''" :default-query="it.rawName" :filter-complex="form.complexName" class="min-w-[200px]" placeholder="— 새 제품(미연결) —" />
                   <span v-if="it.suggested && it.skuId && it.skuId === it.suggestedSkuId"
                         class="badge bg-emerald-50 text-emerald-600 whitespace-nowrap">AI추천</span>
                 </div>

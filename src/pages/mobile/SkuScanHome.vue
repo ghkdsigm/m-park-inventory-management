@@ -322,7 +322,7 @@ const view = computed(() => {
         >
           <img :src="thumb(row)" class="h-14 w-14 shrink-0 rounded-lg bg-slate-100 object-cover" alt="" />
           <div class="min-w-0 flex-1">
-            <p class="font-mono text-xs text-brand-600">{{ row.code }}</p>
+            <p class="font-mono text-xs text-brand-600">{{ row.code }}<span v-if="row.complexName" class="ml-1 rounded bg-emerald-50 px-1 text-emerald-700">{{ row.complexName }}</span></p>
             <p class="truncate text-sm font-medium text-slate-800">{{ row.productName }}</p>
             <p v-if="row.spec || row.color" class="truncate text-xs text-slate-400">{{ [row.spec, row.color].filter(Boolean).join(' · ') }}</p>
           </div>

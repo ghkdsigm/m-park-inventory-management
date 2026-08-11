@@ -94,7 +94,7 @@ public class QuoteService {
                 BigDecimal vat = toDecimal(it.path("vat"));
 
                 String suggestedSkuId = null, suggestedLabel = null, matchStatus = "unmatched";
-                Map<String, Object> hit = suggestSku(name);
+                Map<String, Object> hit = suggestSku(name, site);
                 if (hit != null) {
                     suggestedSkuId = str(hit.get("skuId"));
                     suggestedLabel = (str(hit.get("code")) + " " + str(hit.get("productName"))).trim();
@@ -351,11 +351,23 @@ public class QuoteService {
 
     /* ============ 내부 ============ */
 
-    /** 품명에서 뽑은 키워드로 기존 SKU 최상위 후보 1건을 찾는다(없으면 null). */
-    private Map<String, Object> suggestSku(String name) {
+    /**
+     * 품명 키워드로 기존 SKU 후보를 찾는다. 견적 현장(site)이 있으면 그 단지 SKU를 우선 추천
+     * (같은 품목·규격이 단지별 SKU로 나뉘므로). 단지 일치 후보가 없으면 최상위 후보.
+     */
+    private Map<String, Object> suggestSku(String name, String site) {
+        String s = site == null ? "" : site.replaceAll("\\s", "");
         for (String kw : matchKeywords(name)) {
-            List<Map<String, Object>> hits = chatQueryService.searchSku(kw, 1);
-            if (hits != null && !hits.isEmpty()) return hits.get(0);
+            List<Map<String, Object>> hits = chatQueryService.searchSku(kw, 5);
+            if (hits != null && !hits.isEmpty()) {
+                if (!s.isBlank()) {
+                    for (Map<String, Object> h : hits) {
+                        String hc = str(h.get("complexName")).replaceAll("\\s", "");
+                        if (!hc.isBlank() && s.contains(hc)) return h; // 현장에 단지명 포함 → 그 단지 SKU
+                    }
+                }
+                return hits.get(0);
+            }
         }
         return null;
     }

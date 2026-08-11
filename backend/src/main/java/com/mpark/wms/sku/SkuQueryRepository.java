@@ -64,6 +64,7 @@ public class SkuQueryRepository {
     public SkuListPageResult managePage(SkuFilter f) {
         Map<String, Object> p = new HashMap<>();
         StringBuilder w = new StringBuilder(" from Sku sk where 1=1 ");
+        if (nb(f.complexId()))       { w.append(" and sk.complexId = :complexId ");             p.put("complexId", f.complexId()); }
         if (nb(f.categoryId()))      { w.append(" and sk.categoryId = :categoryId ");           p.put("categoryId", f.categoryId()); }
         if (nb(f.productCodeId()))   { w.append(" and sk.productCodeId = :productCodeId ");      p.put("productCodeId", f.productCodeId()); }
         if (nb(f.productDetailId())) { w.append(" and sk.productDetailId = :productDetailId ");  p.put("productDetailId", f.productDetailId()); }
@@ -157,7 +158,7 @@ public class SkuQueryRepository {
             int locCount = (int) num(r[2]);
             LocalDateTime moved = (LocalDateTime) r[3];
             rows.add(new SkuAggRow(
-                    sk.getId(), sk.getCode(), sk.getProductId(), sk.getProductName(),
+                    sk.getId(), sk.getCode(), sk.getProductId(), sk.getProductName(), sk.getComplexName(),
                     sk.getSpec(), sk.getColor(), sk.getReleaseYear(), sk.getProductionYear(), sk.getPurpose(),
                     sk.getImageUrl(), sk.getProductMainImageUrl(), sk.getPrice(), sk.getSafetyStock(),
                     sk.getCategoryId(), sk.getProductCodeId(), sk.getProductDetailId(), sk.getPathLabel(),

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { skus, products, categories, productCodes, productDetails, quotes } from '@/services/db'
+import { skus, products, categories, productCodes, productDetails, complexes, quotes } from '@/services/db'
 import { makeQrBatch } from '@/services/qr'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
@@ -49,6 +49,7 @@ const loading = ref(true)
 const rows = ref([]) // 현재 페이지 SKU(변형)
 const total = ref(0)
 const productList = ref([])
+const complexList = ref([])
 const categoryList = ref([])
 const productCodeList = ref([])
 const productDetailList = ref([])
@@ -119,8 +120,8 @@ const qrSku = ref(null)
 
 async function loadMasters() {
   try {
-    ;[productList.value, categoryList.value, productCodeList.value, productDetailList.value] =
-      await Promise.all([products.list(), categories.list(), productCodes.list(), productDetails.list()])
+    ;[productList.value, categoryList.value, productCodeList.value, productDetailList.value, complexList.value] =
+      await Promise.all([products.list(), categories.list(), productCodes.list(), productDetails.list(), complexes.list()])
     const opt = await skus.filterOptions()
     colorOptions.value = opt.colors
     releaseYearOptions.value = opt.releaseYears
@@ -137,7 +138,7 @@ onMounted(load)
 const modal = ref(false)
 const editing = ref(null)
 const blankForm = () => ({
-  productId: '', code: '', spec: '', dimW: '', dimL: '', dimH: '', dimD: '',
+  productId: '', complexId: '', complexName: '', code: '', spec: '', dimW: '', dimL: '', dimH: '', dimD: '',
   color: '', releaseYear: '', productionYear: '', purpose: '', purposeSel: '',
   imageUrl: '', price: 0, safetyStock: 0,
   lifecycleEnabled: false, cycleValue: 0, cycleUnit: 'month', lastReplacedAt: '', replaceReason: '', lifecycleNote: '',
@@ -209,7 +210,7 @@ function openEdit(s) {
   pendingQuoteItem.value = null
   quotes.forSku(s.id).then((q) => { quotePrice.value = q ? q.unitPrice : null }).catch(() => {})
   Object.assign(form, {
-    productId: s.productId, code: s.code, spec: s.spec || '',
+    productId: s.productId, complexId: s.complexId || '', complexName: s.complexName || '', code: s.code, spec: s.spec || '',
     dimW: s.dimW ?? '', dimL: s.dimL ?? '', dimH: s.dimH ?? '', dimD: s.dimD ?? '',
     color: s.color || '', releaseYear: s.releaseYear || '', productionYear: s.productionYear || '',
     purpose: s.purpose || '',
@@ -225,6 +226,8 @@ async function save() {
   if (!form.productId) return toast.error('상품을 선택하세요.')
   if (!hasAnyAttr()) return toast.error('규격·색상·출시년도·생산년도·구매목적·단가·안전재고 중 최소 1개는 입력해야 합니다.')
   const product = productList.value.find((p) => p.id === form.productId)
+  const complexName = complexList.value.find((c) => c.id === form.complexId)?.name || ''
+  const cx = { complexId: form.complexId || null, complexName }
   const baseDate = form.lastReplacedAt ? new Date(form.lastReplacedAt) : null
   const lifecycle = {
     lifecycleEnabled: !!form.lifecycleEnabled,
@@ -239,7 +242,7 @@ async function save() {
     if (editing.value) {
       await skus.update(editing.value.id, {
         // 상품 기준 필드는 상품에서 다시 실어 보존(수정 시 덮어쓰기 방지)
-        productId: product.id, productName: product.name,
+        productId: product.id, productName: product.name, ...cx,
         categoryId: product.categoryId, productCodeId: product.productCodeId, productDetailId: product.productDetailId,
         pathLabel: product.pathLabel || '',
         spec: form.spec.trim(), ...dims, color: form.color.trim(),
@@ -254,7 +257,7 @@ async function save() {
         releaseYear: form.releaseYear, productionYear: form.productionYear, purpose: form.purpose.trim(),
         imageUrl: form.imageUrl || '', ...lifecycle,
         productMainImageUrl: product.mainImageUrl || '', price: form.price, safetyStock: form.safetyStock,
-        productId: product.id, productName: product.name,
+        productId: product.id, productName: product.name, ...cx,
         categoryId: product.categoryId, productCodeId: product.productCodeId, productDetailId: product.productDetailId,
         pathLabel: product.pathLabel || '',
       })
@@ -355,6 +358,7 @@ async function printSelected() {
             <th class="w-10 px-3 py-2.5"><input type="checkbox" class="rounded border-slate-300" :checked="allChecked" @change="toggleAll" /></th>
             <th class="px-3 py-2.5 font-semibold">SKU 코드</th>
             <th class="px-3 py-2.5 font-semibold">SKU명 (상품 · 규격)</th>
+            <th class="px-3 py-2.5 font-semibold">단지</th>
             <th class="px-3 py-2.5 font-semibold">치수</th>
             <th class="px-3 py-2.5 font-semibold">색상</th>
             <th class="px-3 py-2.5 font-semibold">출시</th>
@@ -377,6 +381,7 @@ async function printSelected() {
                 </div>
               </div>
             </td>
+            <td class="px-3 py-2.5"><span v-if="s.complexName" class="badge bg-brand-50 text-brand-700">{{ s.complexName }}</span><span v-else class="text-slate-300">—</span></td>
             <td class="px-3 py-2.5 text-xs text-slate-600">{{ dimText(s) || '—' }}</td>
             <td class="px-3 py-2.5 text-slate-600">{{ s.color || '—' }}</td>
             <td class="px-3 py-2.5 text-slate-500">{{ s.releaseYear || '—' }}</td>
@@ -444,6 +449,13 @@ async function printSelected() {
           <AppSelect v-model="form.productId" fluid class="w-full" :disabled="!!editing">
             <option value="">상품 선택</option>
             <option v-for="p in (editing ? productList : filteredProducts)" :key="p.id" :value="p.id">{{ p.name }} ({{ p.code }}{{ p.pathLabel ? ' · ' + p.pathLabel : '' }})</option>
+          </AppSelect>
+        </div>
+        <div>
+          <label class="label">단지 <span class="text-slate-400">(같은 품목·규격도 단지별 별도 SKU)</span></label>
+          <AppSelect v-model="form.complexId" class="w-full">
+            <option value="">단지 선택 안 함</option>
+            <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
           </AppSelect>
         </div>
         <div>
