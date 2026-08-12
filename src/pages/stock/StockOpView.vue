@@ -308,8 +308,9 @@ async function confirmVoid() {
               :class="selected?.stockId === s.stockId ? 'bg-brand-50' : ''" @click="selectItem(s)">
               <img :src="resolveImage(s)" class="h-10 w-10 shrink-0 rounded-lg border border-slate-100 object-cover" alt="" />
               <div class="min-w-0 flex-1">
+                <span v-if="s.complexName" class="badge bg-emerald-50 text-emerald-700">{{ s.complexName }}</span>
                 <span class="badge bg-brand-50 font-mono text-brand-700">{{ s.code }}</span>
-                <span class="ml-1 text-sm font-medium text-slate-700">{{ s.productName }}</span>
+                <span class="ml-1 text-sm font-medium text-slate-700">{{ s.productName }}<span v-if="specText(s)" class="text-brand-600"> · {{ specText(s) }}</span></span>
                 <p class="truncate text-xs text-slate-400">📍 {{ s.complexName }}<span v-if="s.locationLabel"> › {{ s.locationLabel }}</span></p>
               </div>
               <span class="shrink-0 text-sm font-semibold" :class="s.qty <= 0 ? 'text-rose-500' : 'text-slate-600'">{{ s.qty }}개</span>
