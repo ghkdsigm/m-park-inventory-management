@@ -15,7 +15,8 @@ const props = defineProps({
   placeholder: { type: String, default: '— 미연결 —' },
   disabled: { type: Boolean, default: false },
   defaultQuery: { type: String, default: '' },   // 열 때 자동 검색어(견적 품목명 등)
-  filterComplex: { type: String, default: '' },  // 이 단지 SKU를 상단 우선 정렬
+  filterComplex: { type: String, default: '' },  // 이 단지명 SKU를 상단 우선 정렬
+  complexId: { type: String, default: '' },      // 지정 시 이 단지 SKU만 조회(하드 필터)
 })
 const emit = defineEmits(['update:modelValue', 'change'])
 
@@ -45,7 +46,7 @@ let searchTimer = null
 async function fetchList() {
   listing.value = true
   try {
-    const r = await skus.managePage({ search: q.value.trim(), page: 1, pageSize: 20 })
+    const r = await skus.managePage({ search: q.value.trim(), complexId: props.complexId || undefined, page: 1, pageSize: 20 })
     let rows = r.rows || []
     if (props.filterComplex) {  // 선택 단지 SKU를 상단으로
       const cx = props.filterComplex

@@ -29,8 +29,10 @@ public class QuoteController {
     private final QuoteService service;
 
     @PostMapping("/upload")
-    public QuoteUploadResult upload(@RequestParam("file") MultipartFile file) {
-        return service.upload(file);
+    public QuoteUploadResult upload(@RequestParam("file") MultipartFile file,
+                                    @RequestParam(value = "complexId", required = false) String complexId,
+                                    @RequestParam(value = "complexName", required = false) String complexName) {
+        return service.upload(file, complexId, complexName);
     }
 
     @PostMapping

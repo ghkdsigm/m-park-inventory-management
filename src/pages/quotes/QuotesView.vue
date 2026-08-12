@@ -73,7 +73,14 @@ const form = reactive({
   items: [],
 })
 
-function pickFile() { fileInput.value?.click() }
+// 업로드 팝업: 단지 먼저 선택 후 파일 선택
+const uploadModal = ref(false)
+const uploadComplexId = ref('')
+function openUpload() { uploadComplexId.value = ''; uploadModal.value = true }
+function pickFile() {
+  if (!uploadComplexId.value) return toast.error('단지를 먼저 선택하세요.')
+  fileInput.value?.click()
+}
 
 async function onFile(e) {
   const file = e.target.files?.[0]
@@ -82,9 +89,10 @@ async function onFile(e) {
   if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
     return toast.error('PDF 파일만 업로드할 수 있습니다.')
   }
+  const cxSel = complexList.value.find((c) => c.id === uploadComplexId.value)
   uploading.value = true
   try {
-    const r = await quotes.upload(file)
+    const r = await quotes.upload(file, uploadComplexId.value, cxSel?.name || '')
     form.vendorName = r.vendorName || ''
     form.vendorBizNo = r.vendorBizNo || ''
     form.quoteDate = r.quoteDate || ''
@@ -92,10 +100,10 @@ async function onFile(e) {
     form.totalAmount = r.totalAmount || 0
     form.fileUrl = r.fileUrl || ''
     form.filePath = r.filePath || ''
-    // 현장(단지) 자동 매칭
-    const cx = matchComplex(r.siteLabel)
-    form.complexId = cx ? cx.id : ''
-    form.complexName = cx ? cx.name : (r.siteLabel || '')
+    // 업로드 시 선택한 단지로 확정 (SKU 연결·저장 모두 이 단지 기준)
+    form.complexId = uploadComplexId.value
+    form.complexName = cxSel?.name || ''
+    uploadModal.value = false
     // 품목 (skuId = AI 추천 기본값, 원본금액 보관)
     form.items = (r.items || []).map((it) => ({
       lineNo: it.lineNo,
@@ -115,7 +123,8 @@ async function onFile(e) {
     toast.success(`추출 완료 · 품목 ${form.items.length}건`)
     autoLinkByComplex() // 단지 자동매칭이 되면 즉시 연결
   } catch (e) {
-    toast.error('견적서 추출 실패: ' + (e.message || e.code))
+    // 월 1회 중복 등 서버 안내 메시지는 그대로 노출(팝업은 열린 채 유지 → 단지/파일 재선택)
+    toast.error(e.message || e.code || '견적서 업로드 실패')
   } finally {
     uploading.value = false
   }
@@ -281,7 +290,7 @@ async function openPdf(url) {
 
 <template>
   <PageHeader title="견적서 관리" subtitle="업체 견적서(PDF)를 올리면 품목·수량·단가를 자동 추출하고 SKU와 매칭합니다.">
-    <button class="btn-primary" :disabled="uploading" @click="pickFile">
+    <button class="btn-primary" :disabled="uploading" @click="openUpload">
       {{ uploading ? '추출 중…' : '+ 견적서 업로드' }}
     </button>
     <input ref="fileInput" type="file" accept="application/pdf,.pdf" class="hidden" @change="onFile" />
@@ -358,8 +367,8 @@ async function openPdf(url) {
         <div><label class="label">사업자번호</label><input v-model="form.vendorBizNo" class="input" /></div>
         <div><label class="label">견적일 (YYYY-MM-DD)</label><input v-model="form.quoteDate" class="input" placeholder="2026-07-04" /></div>
         <div>
-          <label class="label">단지</label>
-          <AppSelect v-model="form.complexId" @change="onComplexChange">
+          <label class="label">단지 <span class="text-slate-400">(업로드 시 선택 · 고정)</span></label>
+          <AppSelect v-model="form.complexId" disabled @change="onComplexChange">
             <option value="">{{ form.siteLabel ? form.siteLabel + ' (미지정)' : '단지 선택' }}</option>
             <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
           </AppSelect>
@@ -404,7 +413,7 @@ async function openPdf(url) {
               <td class="px-2 py-2 text-right tabular-nums text-slate-500">{{ fmt(it.vatAmount) }}</td>
               <td class="px-2 py-2">
                 <div class="flex items-center gap-1">
-                  <SkuPicker v-model="it.skuId" :initial-label="it.suggestedSkuLabel || ''" :default-query="it.rawName" :filter-complex="form.complexName" class="min-w-[200px]" placeholder="— 새 제품(미연결) —" />
+                  <SkuPicker v-model="it.skuId" :initial-label="it.suggestedSkuLabel || ''" :default-query="it.rawName" :complex-id="form.complexId" class="min-w-[200px]" placeholder="— 새 제품(미연결) —" />
                   <span v-if="it.suggested && it.skuId && it.skuId === it.suggestedSkuId"
                         class="badge bg-emerald-50 text-emerald-600 whitespace-nowrap">AI추천</span>
                 </div>
@@ -459,7 +468,7 @@ async function openPdf(url) {
               <td class="px-3 py-2 text-right tabular-nums">{{ fmt(it.amount) }}</td>
               <td class="px-3 py-2 text-right tabular-nums text-slate-500">{{ fmt(it.vatAmount) }}</td>
               <td class="px-3 py-2">
-                <SkuPicker v-model="it.skuId" class="min-w-[220px]" placeholder="— 미연결 —" @change="relink(it)" />
+                <SkuPicker v-model="it.skuId" :default-query="it.rawName" :complex-id="detail.complexId" class="min-w-[220px]" placeholder="— 미연결 —" @change="relink(it)" />
               </td>
             </tr>
           </tbody>
@@ -505,6 +514,28 @@ async function openPdf(url) {
     </div>
     <template #footer>
       <button class="btn-ghost" @click="linkLogModal = false">닫기</button>
+    </template>
+  </BaseModal>
+
+  <!-- 업로드 모달: 단지 선택 후 PDF 업로드 (견적서는 단지·업체·월 1회) -->
+  <BaseModal v-model="uploadModal" title="견적서 업로드">
+    <div class="space-y-3">
+      <div>
+        <label class="label">단지 <span class="text-rose-500">*</span></label>
+        <AppSelect v-model="uploadComplexId" class="w-full">
+          <option value="">단지 선택</option>
+          <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
+        </AppSelect>
+      </div>
+      <p class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+        견적서는 <b>단지별로 따로</b> 업로드합니다. 같은 <b>단지·업체·월</b>에는 1회만 올릴 수 있어요.
+      </p>
+      <button class="btn-primary w-full py-2.5" :disabled="!uploadComplexId || uploading" @click="pickFile">
+        {{ uploading ? '추출 중…' : '📄 PDF 선택 후 업로드' }}
+      </button>
+    </div>
+    <template #footer>
+      <button class="btn-ghost" @click="uploadModal = false">취소</button>
     </template>
   </BaseModal>
 

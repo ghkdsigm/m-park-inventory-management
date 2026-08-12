@@ -29,9 +29,11 @@ export const productDetails = makeBoard('product-details')
 export const quotes = {
   ...makeBoard('quotes'),
   // PDF 업로드 → 추출+SKU추천 결과(미저장) 반환
-  upload: (file) => {
+  upload: (file, complexId = '', complexName = '') => {
     const form = new FormData()
     form.append('file', file, file.name)
+    if (complexId) form.append('complexId', complexId)
+    if (complexName) form.append('complexName', complexName)
     return api.upload('/quotes/upload', form)
   },
   // 서버 페이징 목록 + 필터

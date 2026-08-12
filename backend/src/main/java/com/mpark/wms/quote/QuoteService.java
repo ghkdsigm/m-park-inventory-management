@@ -47,7 +47,7 @@ public class QuoteService {
     private jakarta.persistence.EntityManager em;
 
     /* ============ 업로드 → 추출 + 자동추천 (미저장) ============ */
-    public QuoteUploadResult upload(MultipartFile file) {
+    public QuoteUploadResult upload(MultipartFile file, String complexId, String complexName) {
         if (file == null || file.isEmpty()) throw ApiException.badRequest("파일이 비어 있습니다.");
         String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         boolean pdf = filename.toLowerCase().endsWith(".pdf") || "application/pdf".equals(file.getContentType());
@@ -75,6 +75,13 @@ public class QuoteService {
         LocalDate quoteDate = parseDate(parsed.path("quoteDate").asText(""));
         String site = parsed.path("site").asText("");
         BigDecimal totalAmount = toDecimal(parsed.path("totalAmount"));
+
+        // 월 1회 제한: 같은 (단지·업체·월) 견적서가 이미 있으면 업로드 차단
+        if (existsForMonth(blankToNull(complexId), vendorName, quoteDate)) {
+            String mm = quoteDate != null ? quoteDate.getYear() + "년 " + quoteDate.getMonthValue() + "월 " : "";
+            throw ApiException.badRequest("이미 " + mm + "'" + vendorName + "' 업체의 " + nz(complexName)
+                    + " 견적서가 등록되어 있습니다. (단지·업체·월 1회만 업로드 가능)");
+        }
 
         // 품목 + SKU 자동추천
         List<ItemDto> items = new ArrayList<>();
@@ -114,6 +121,10 @@ public class QuoteService {
     public Quote create(QuoteCreateRequest r) {
         if (r == null || r.items() == null || r.items().isEmpty())
             throw ApiException.badRequest("견적 품목이 없습니다.");
+        // 월 1회 제한(최종 가드)
+        if (existsForMonth(blankToNull(r.complexId()), nz(r.vendorName()), r.quoteDate()))
+            throw ApiException.badRequest("이미 해당 월에 '" + nz(r.vendorName()) + "' 업체의 "
+                    + nz(r.complexName()) + " 견적서가 등록되어 있습니다. (단지·업체·월 1회)");
 
         Quote q = new Quote();
         q.setVendorName(nz(r.vendorName()));
@@ -420,4 +431,16 @@ public class QuoteService {
     private static String str(Object o) { return o == null ? "" : o.toString(); }
     private static String nz(String s) { return s == null ? "" : s; }
     private static String blankToNull(String s) { return (s == null || s.isBlank()) ? null : s; }
+
+    /** 같은 (단지·업체·월)에 활성 견적서가 이미 있는가. (월 1회 업로드 제한) */
+    boolean existsForMonth(String complexId, String vendorName, LocalDate date) {
+        if (complexId == null || vendorName == null || vendorName.isBlank() || date == null) return false;
+        LocalDate ms = date.withDayOfMonth(1);
+        Long n = em.createQuery(
+                "select count(q) from Quote q where q.complexId = :cx and q.vendorName = :v "
+                        + "and q.status = 'active' and q.quoteDate >= :ms and q.quoteDate < :me", Long.class)
+                .setParameter("cx", complexId).setParameter("v", vendorName)
+                .setParameter("ms", ms).setParameter("me", ms.plusMonths(1)).getSingleResult();
+        return n != null && n > 0;
+    }
 }
