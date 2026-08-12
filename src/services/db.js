@@ -176,6 +176,7 @@ export const skus = {
   async managePage(filters = {}) {
     const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
     const r = await api.post('/skus/manage-page', {
+      complexId: filters.complexId || null,
       categoryId: filters.categoryId || null,
       productCodeId: filters.productCodeId || null,
       productDetailId: filters.productDetailId || null,

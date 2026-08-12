@@ -76,8 +76,11 @@ public class SkuQueryRepository {
         if (f.priceMax() != null)    { w.append(" and sk.price <= :priceMax ");                 p.put("priceMax", f.priceMax()); }
         if (Boolean.TRUE.equals(f.lifecycleOnly())) { w.append(" and sk.lifecycleEnabled = true "); }
         if (nb(f.search())) {
-            w.append(" and (sk.code like :q or sk.productName like :q or sk.spec like :q or sk.color like :q or sk.purpose like :q or sk.pathLabel like :q) ");
+            // 품목+규격 결합 검색도 지원("건전지 AA", "누전차단기 20A" 등). 공백 제거본도 매칭.
+            w.append(" and (sk.code like :q or sk.productName like :q or sk.spec like :q or sk.color like :q or sk.purpose like :q or sk.pathLabel like :q "
+                    + "or concat(sk.productName, ' ', sk.spec) like :q or replace(concat(sk.productName, sk.spec), ' ', '') like :qns) ");
             p.put("q", "%" + f.search() + "%");
+            p.put("qns", "%" + f.search().replace(" ", "") + "%");
         }
         String where = w.toString();
         long total = bindAll(em.createQuery("select count(sk) " + where, Long.class), p).getSingleResult();

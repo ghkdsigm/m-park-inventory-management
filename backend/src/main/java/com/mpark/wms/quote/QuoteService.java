@@ -184,8 +184,9 @@ public class QuoteService {
         if (nb(yearMonth)) {
             try {
                 LocalDate ms = LocalDate.parse(yearMonth + "-01");
-                w.append(" and q.quoteDate >= :ms and q.quoteDate < :me");
-                p.put("ms", ms); p.put("me", ms.plusMonths(1));
+                // 월 필터는 업로드월(createdAt) 기준
+                w.append(" and q.createdAt >= :ms and q.createdAt < :me");
+                p.put("ms", ms.atStartOfDay()); p.put("me", ms.plusMonths(1).atStartOfDay());
             } catch (Exception ignored) {}
         }
         if (nb(search)) {
@@ -214,10 +215,11 @@ public class QuoteService {
                 "select distinct q.vendorName from Quote q where q.vendorName <> '' order by q.vendorName", String.class).getResultList();
         List<String> complexes = em.createQuery(
                 "select distinct q.complexName from Quote q where q.complexName <> '' order by q.complexName", String.class).getResultList();
-        List<LocalDate> dates = em.createQuery(
-                "select distinct q.quoteDate from Quote q where q.quoteDate is not null order by q.quoteDate desc", LocalDate.class).getResultList();
+        // 월 목록은 업로드월(createdAt) 기준
+        List<java.time.LocalDateTime> dates = em.createQuery(
+                "select q.createdAt from Quote q where q.createdAt is not null order by q.createdAt desc", java.time.LocalDateTime.class).getResultList();
         java.util.List<String> months = new java.util.ArrayList<>();
-        for (LocalDate d : dates) {
+        for (java.time.LocalDateTime d : dates) {
             String ym = String.format("%04d-%02d", d.getYear(), d.getMonthValue());
             if (!months.contains(ym)) months.add(ym);
         }
