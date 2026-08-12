@@ -39,7 +39,7 @@ public class ChatService {
     private String model;
 
     // 사진 인식(제품 찾아보기) 비전 모델. 제품목록 프롬프트 덕에 mini로도 충분. gpt-4o로 격상 가능(OPENAI_VISION_MODEL).
-    @Value("${app.ai.vision-model:gpt-4o-mini}")
+    @Value("${app.ai.vision-model:gpt-4o}")
     private String visionModel;
 
     @Value("${app.ai.base-url:https://api.openai.com/v1}")
