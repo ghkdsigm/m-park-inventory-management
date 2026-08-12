@@ -92,7 +92,11 @@ const adjMemo = ref('')
 function pickMode(m) {
   mode.value = m
   opRid.value = ''
-  if (m === 'in') { inQty.value = 1; inReason.value = ''; inMemo.value = '' }
+  if (m === 'in') {
+    inQty.value = 1; inReason.value = ''; inMemo.value = ''
+    inComplex.value = sku.value?.complexId || '' // 단지는 SKU에 고정
+    inZone.value = ''; inSub.value = ''; inLoc.value = '' // 구역/상세구역/위치는 직접 선택
+  }
   else if (m === 'out') {
     outQty.value = 1; outReason.value = ''; outMemo.value = ''
     requestDept.value = ''; requester.value = ''; handler.value = auth.user?.name || ''
@@ -208,10 +212,11 @@ const chatContext = computed(() => {
     '  이런 요청을 받으면 정중히 거절하고 "이 화면에서는 입고/출고만 가능합니다. 그 외 작업은 관리자용 웹에서 처리해 주세요." 라고 안내하세요.',
     '',
     '[입고 규칙 — 중요]',
+    `- 이 SKU는 '${s.complexName || '미지정'}' 단지 전용입니다. 입고 보관위치는 반드시 '${s.complexName || '미지정'}' 단지 안에서만 지정하고, 다른 단지로는 절대 입고하지 마세요.`,
     defaultStock
       ? '- 이 제품은 이미 보관위치가 지정되어 있습니다. 입고 시 보관위치는 기본으로 아래 "기본 위치"를 사용하고, 사용자에게는 수량과 사유만 물어보세요. 위치를 다시 묻지 마세요.'
-      : '- 이 제품은 아직 보관된 위치가 없습니다. 입고 시 보관위치를 먼저 물어본 뒤 수량, 사유를 수집하세요.',
-    '- 다만 사용자가 "위치 바꿔줘", "다른 곳에 입고", "○○ 창고에 넣어줘" 처럼 위치 변경을 요청하면, 그때만 단지 › 구역 › 상세구역 › 보관위치 선택 과정을 진행하세요.',
+      : `- 이 제품은 아직 보관된 위치가 없습니다. 입고 시 보관위치를 먼저 물어보되, 단지는 '${s.complexName || '미지정'}'로 고정하고 그 단지의 구역 › 상세구역 › 보관위치만 선택하게 하세요.`,
+    '- 다만 사용자가 "위치 바꿔줘", "다른 곳에 입고", "○○ 창고에 넣어줘" 처럼 위치 변경을 요청해도, 단지는 이 SKU의 단지로 고정하고 구역/상세구역/보관위치만 변경하세요.',
     ...(defaultStock ? [`- 기본 위치: 보관위치ID ${defaultStock.storageLocationId} | ${locLabel(defaultStock)}`] : []),
     '',
     '[출고 규칙]',
@@ -223,6 +228,7 @@ const chatContext = computed(() => {
     `- SKU ID: ${s.id}`,
     `- 코드: ${s.code}`,
     `- 상품명: ${s.productName}`,
+    `- 단지(귀속): ${s.complexName || '미지정'}`,
   ]
   if (attrLine.value) lines.push(`- 속성: ${attrLine.value}`)
   lines.push(`- 전체 재고: ${totalQty.value}개`)
@@ -423,10 +429,11 @@ const fmtTime = fmtDateTime
         <!-- 입고: 위치 필수 -->
         <div v-else-if="mode === 'in'" class="card p-4">
           <div class="mb-3 flex items-center justify-between"><p class="text-sm font-semibold text-emerald-700">입고 (위치 필수)</p><button class="btn-ghost btn-sm" @click="mode = ''">↺ 재선택</button></div>
-          <AppSelect v-model="inComplex" class="mb-2 w-full" @change="onInComplex">
+          <AppSelect v-model="inComplex" class="mb-2 w-full" :disabled="!!sku?.complexId" @change="onInComplex">
             <option value="">단지 선택</option>
             <option v-for="c in complexChoices" :key="c.id" :value="c.id">{{ c.name }}</option>
           </AppSelect>
+          <p v-if="sku?.complexName" class="mb-2 -mt-1 text-[11px] text-slate-400">단지는 이 SKU의 <b>{{ sku.complexName }}</b>로 고정됩니다 · 구역/보관위치만 선택</p>
           <div class="grid grid-cols-2 gap-2">
             <AppSelect v-model="inZone" class="w-full" :disabled="!inComplex" @change="onInZone"><option value="">구역 전체</option><option v-for="z in zoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option></AppSelect>
             <AppSelect v-model="inSub" class="w-full" :disabled="!inZone"><option value="">상세구역 전체</option><option v-for="s in subChoices" :key="s.id" :value="s.id">{{ s.name }}</option></AppSelect>
