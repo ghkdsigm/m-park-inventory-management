@@ -38,6 +38,10 @@ public class ChatService {
     @Value("${app.ai.model:gpt-4o-mini}")
     private String model;
 
+    // 사진 인식(제품 찾아보기) 비전 모델. 제품목록 프롬프트 덕에 mini로도 충분. gpt-4o로 격상 가능(OPENAI_VISION_MODEL).
+    @Value("${app.ai.vision-model:gpt-4o-mini}")
+    private String visionModel;
+
     @Value("${app.ai.base-url:https://api.openai.com/v1}")
     private String baseUrl;
 
@@ -138,8 +142,21 @@ public class ChatService {
             catTable.append(String.format("| %s | %s |\n", id, nz(r[1])));
         }
 
+        // ①-b 등록된 제품명 목록(카테고리별)도 로드 — 카탈로그가 작으므로 프롬프트에 넣어 인식률↑
+        //     (AI가 '이 중 무엇인지' 골라 productKind/keywords 를 실제 제품명에 맞추게 함)
+        List<Object[]> prodRows = em.createQuery(
+                "SELECT p.categoryName, p.name FROM Product p WHERE p.name <> '' ORDER BY p.categoryName, p.name", Object[].class
+        ).getResultList();
+        StringBuilder prodTable = new StringBuilder("## 등록된 제품 목록 (사진 속 제품이 이 중 하나면 그 제품명을 productKind 로)\n");
+        String lastCat = null;
+        for (Object[] r : prodRows) {
+            String cat = nz(r[0]).isBlank() ? "기타" : nz(r[0]);
+            if (!cat.equals(lastCat)) { prodTable.append("\n· [").append(cat).append("] "); lastCat = cat; }
+            prodTable.append(nz(r[1])).append(", ");
+        }
+
         // ② 비전 호출 — 사진이 속한 카테고리 + 구분 키워드 분류
-        Classification cls = classifyImage(imageBase64, catTable.toString(), catNameById);
+        Classification cls = classifyImage(imageBase64, catTable.toString(), prodTable.toString(), catNameById);
 
         // ③ 후보 SKU 조회: 카테고리 필터 → (없으면) 키워드 LIKE 폴백
         List<Object[]> skuRows = fetchCandidateSkus(cls);
@@ -151,9 +168,16 @@ public class ChatService {
 
         List<Map<String, Object>> scored = new ArrayList<>(); // 각 항목에 임시 점수(_score) 포함
         for (Object[] r : skuRows) {
-            String hay = (nz(r[2]) + " " + nz(r[3]) + " " + nz(r[4]) + " " + nz(r[5])).toLowerCase();
+            // 공백 무시 매칭: "도어 스토퍼"(AI)와 "도어스토퍼"(SKU) 를 같게 봄. 여러 단어 키워드는 토큰별로도 매칭.
+            String hayLoose = loose(nz(r[2]) + nz(r[3]) + nz(r[4]) + nz(r[5]));
             List<String> hits = new ArrayList<>();
-            for (String t : terms) if (!t.isBlank() && hay.contains(t.toLowerCase())) hits.add(t);
+            for (String t : terms) {
+                if (t.isBlank()) continue;
+                if (hayLoose.contains(loose(t))) { hits.add(t); continue; }
+                for (String tok : t.trim().split("\\s+")) {
+                    if (loose(tok).length() >= 2 && hayLoose.contains(loose(tok))) { hits.add(t); break; }
+                }
+            }
 
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("skuId", String.valueOf(r[0]));
@@ -183,14 +207,16 @@ public class ChatService {
     }
 
     /** 비전(GPT-4o)에 카테고리 목록 + 사진을 주고 매칭 카테고리 ID·구분 키워드를 분류한다. */
-    private Classification classifyImage(String imageBase64, String catTable, Map<String, String> catNameById) {
+    private Classification classifyImage(String imageBase64, String catTable, String prodTable, Map<String, String> catNameById) {
         String dataUrl = imageBase64.startsWith("data:") ? imageBase64 : ("data:image/jpeg;base64," + imageBase64);
 
         String system = "당신은 재고관리 어시스턴트입니다. 사용자가 올린 제품 사진을 분석하세요.\n"
                 + "아래 '등록된 카테고리 목록' 중에서 사진 속 제품이 속할 가능성이 높은 카테고리를 유사도 높은 순으로 최대 3개 고르고, "
                 + "제품을 구분할 핵심 키워드(색상·규격/크기·브랜드 등)와 제품 종류를 뽑아 classify_product 도구로 반환하세요.\n"
-                + "목록에 있는 ID만 사용하세요. 적절한 카테고리가 없으면 categoryIds는 빈 배열로 두되 keywords/productKind는 채우세요.\n\n"
-                + catTable;
+                + "중요: '등록된 제품 목록'에 사진 속 제품과 일치하는 이름이 있으면, productKind 를 반드시 그 목록의 제품명과 '똑같이' 쓰세요(임의 표현 금지). "
+                + "예: 사진이 문 경첩이면 productKind='경첩', 문 밑 고정구면 '도어스토퍼'처럼 목록의 표기를 그대로. keywords 에도 그 제품명을 포함하세요.\n"
+                + "목록에 있는 카테고리 ID만 사용하세요. 적절한 카테고리가 없으면 categoryIds는 빈 배열로 두되 keywords/productKind는 채우세요.\n\n"
+                + catTable + "\n" + prodTable;
 
         List<Map<String, Object>> content = new ArrayList<>();
         content.add(Map.of("type", "text", "text", "이 사진 속 제품의 카테고리와 특징을 분류해줘."));
@@ -211,7 +237,7 @@ public class ChatService {
                                         "productKind", Map.of("type", "string", "description", "제품 종류를 한두 단어로")),
                                 "required", List.of("categoryIds"))));
 
-        JsonNode parsed = callToolOnce(system, content, tool, "classify_product");
+        JsonNode parsed = callToolOnce(visionModel, system, content, tool, "classify_product");
 
         List<String> catIds = new ArrayList<>();
         List<String> keywords = new ArrayList<>();
@@ -231,9 +257,9 @@ public class ChatService {
     }
 
     /** 단발성 tool-call: 지정 도구를 강제 호출하고 arguments(JSON)를 파싱해 반환. 도구 미호출 시 null. */
-    private JsonNode callToolOnce(String system, List<Map<String, Object>> userContent,
+    private JsonNode callToolOnce(String reqModel, String system, List<Map<String, Object>> userContent,
                                   Map<String, Object> tool, String toolName) {
-        String useModel = (model == null || model.isBlank()) ? "gpt-4o" : model.trim();
+        String useModel = (reqModel == null || reqModel.isBlank()) ? "gpt-4o" : reqModel.trim();
         String useBase = (baseUrl == null || baseUrl.isBlank()) ? "https://api.openai.com/v1" : baseUrl.trim();
         useBase = useBase.replaceAll("/+$", "");
 
@@ -303,8 +329,10 @@ public class ChatService {
             if (t.isBlank()) continue;
             String p = "kw" + (i++);
             ors.add("(LOWER(s.productName) LIKE :" + p + " OR LOWER(s.spec) LIKE :" + p
-                    + " OR LOWER(s.color) LIKE :" + p + " OR LOWER(s.pathLabel) LIKE :" + p + ")");
+                    + " OR LOWER(s.color) LIKE :" + p + " OR LOWER(s.pathLabel) LIKE :" + p
+                    + " OR REPLACE(LOWER(s.productName), ' ', '') LIKE :" + p + "ns)");  // 공백무시("도어 스토퍼"="도어스토퍼")
             params.put(p, "%" + t.toLowerCase() + "%");
+            params.put(p + "ns", "%" + t.toLowerCase().replaceAll("\\s+", "") + "%");
         }
         if (ors.isEmpty()) return List.of();
 
@@ -811,4 +839,7 @@ public class ChatService {
     }
 
     private static String nz(Object o) { return o == null ? "" : o.toString(); }
+
+    /** 공백 제거 + 소문자 정규화(사진검색 느슨한 매칭용). */
+    private static String loose(String s) { return s == null ? "" : s.toLowerCase().replaceAll("\\s+", ""); }
 }

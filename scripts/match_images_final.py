@@ -50,9 +50,17 @@ def load_master(imaged):
     return k2no
 
 
+# 품명변경 등으로 마스터 No 조회가 안 되는 SKU 수동 매핑: (단지,품목,규격) -> No
+OVERRIDE = {
+    ("타워", "변압기 온도 콘트롤러", "GW-03(RS485)"): 312,  # 옛 'LED 간판 안정기'(No312)에서 개명
+}
+
+
 def main():
     imaged = scan_images()
     k2no = load_master(imaged)
+    for (cx, item, spec), no in OVERRIDE.items():
+        k2no[(norm(cx), norm(item), norm(bspec(spec)))] = no
     print(f"[cfg] 대상={'운영' if PROD else '로컬'} · S3이미지 {len(imaged)} · 마스터키 {len(k2no)}")
     conn = pymysql.connect(**DB, autocommit=False); cur = conn.cursor()
     cur.execute("SELECT id, complex_name, product_name, spec, image_url FROM skus")
