@@ -54,6 +54,7 @@ const categoryList = ref([])
 const productCodeList = ref([])
 const productDetailList = ref([])
 const search = ref('')
+const fComplex = ref('')
 const fCategory = ref('')
 const fProductCode = ref('')
 const fProductDetail = ref('')
@@ -82,7 +83,7 @@ const releaseYearOptions = ref([])
 const productionYearOptions = ref([])
 
 function resetFilters() {
-  search.value = ''; fCategory.value = ''; fProductCode.value = ''; fProductDetail.value = ''; fProduct.value = ''
+  search.value = ''; fComplex.value = ''; fCategory.value = ''; fProductCode.value = ''; fProductDetail.value = ''; fProduct.value = ''
   fColor.value = ''; fRelease.value = ''; fProduction.value = ''; priceMin.value = ''; priceMax.value = ''
 }
 
@@ -93,7 +94,7 @@ const pageSize = ref(10)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 function curFilters() {
   return {
-    categoryId: fCategory.value, productCodeId: fProductCode.value, productDetailId: fProductDetail.value,
+    complexId: fComplex.value, categoryId: fCategory.value, productCodeId: fProductCode.value, productDetailId: fProductDetail.value,
     productId: fProduct.value, color: fColor.value, releaseYear: fRelease.value, productionYear: fProduction.value,
     priceMin: priceMin.value, priceMax: priceMax.value, search: search.value.trim(),
   }
@@ -107,7 +108,7 @@ async function fetchPage() {
   } catch (e) { toast.error('불러오기 실패: ' + (e.message || e.code)) } finally { loading.value = false }
 }
 // 필터/페이지크기 변경 → 1페이지부터 재조회, 페이지 이동 → 해당 페이지
-watch([fCategory, fProductCode, fProductDetail, fProduct, fColor, fRelease, fProduction, priceMin, priceMax], () => { page.value = 1; fetchPage() })
+watch([fComplex, fCategory, fProductCode, fProductDetail, fProduct, fColor, fRelease, fProduction, priceMin, priceMax], () => { page.value = 1; fetchPage() })
 watch(pageSize, () => { page.value = 1; fetchPage() })
 watch(page, fetchPage)
 let searchTimer = null
@@ -331,6 +332,7 @@ async function printSelected() {
     </PageHeader>
 
     <div class="no-print mb-3 flex flex-wrap items-center gap-2">
+      <AppSelect v-model="fComplex" class="w-auto"><option value="">전체 단지</option><option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option></AppSelect>
       <AppSelect v-model="fCategory" class="w-auto"><option value="">전체 카테고리</option><option v-for="c in categoryList" :key="c.id" :value="c.id">{{ c.name }}</option></AppSelect>
       <AppSelect v-model="fProductCode" class="w-auto"><option value="">전체 제품코드</option><option v-for="p in pcFilterOptions" :key="p.id" :value="p.id">{{ p.name }}</option></AppSelect>
       <AppSelect v-model="fProductDetail" class="w-auto"><option value="">전체 상세코드</option><option v-for="d in pdFilterOptions" :key="d.id" :value="d.id">{{ d.name }}</option></AppSelect>

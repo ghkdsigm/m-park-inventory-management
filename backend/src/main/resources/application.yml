@@ -30,7 +30,7 @@ spring:
 app:
   cors:
     # Vue dev 서버 (로컬). 운영 도메인은 배포 시 추가
-    allowed-origins: ${CORS_ORIGINS:http://localhost:5175,http://localhost:5173}
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177}
   jwt:
     secret: ${JWT_SECRET:dev-only-secret-please-change-min-32-bytes-long-key-0123456789}
     expiration-ms: 604800000   # 7일

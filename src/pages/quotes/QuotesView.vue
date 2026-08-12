@@ -271,6 +271,7 @@ async function openLinkLogs() {
 
 /* ---------- 유틸 ---------- */
 function fmt(n) { return (Number(n) || 0).toLocaleString() }
+function fmtMonth(s) { if (!s) return '-'; const d = new Date(s); return isNaN(d) ? '-' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 function fmtDt(s) { if (!s) return '-'; const d = new Date(s); return isNaN(d) ? s : d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) }
 
 // 견적 PDF는 인증 필요(/files/quotes/**) → 토큰 실은 fetch로 받아 새 탭에서 열기
@@ -327,7 +328,7 @@ async function openPdf(url) {
       <table v-else class="w-full min-w-[720px] text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
-            <th class="px-4 py-2.5 font-semibold">견적일</th>
+            <th class="px-4 py-2.5 font-semibold">업로드월</th>
             <th class="px-4 py-2.5 font-semibold">업체</th>
             <th class="px-4 py-2.5 font-semibold">단지명</th>
             <th class="px-4 py-2.5 font-semibold">등록자</th>
@@ -338,7 +339,7 @@ async function openPdf(url) {
         </thead>
         <tbody class="divide-y divide-slate-50">
           <tr v-for="q in list" :key="q.id" class="hover:bg-slate-50/60">
-            <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ q.quoteDate || '-' }}</td>
+            <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ fmtMonth(q.createdAt) }}</td>
             <td class="px-4 py-3 font-medium text-slate-800">{{ q.vendorName }}</td>
             <td class="px-4 py-3">
               <span v-if="q.complexName" class="badge bg-brand-50 text-brand-700">{{ q.complexName }}</span>
