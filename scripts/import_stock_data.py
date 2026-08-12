@@ -14,9 +14,13 @@ from collections import defaultdict, Counter
 import openpyxl, pymysql
 
 APPLY = "--apply" in sys.argv
+PROD = "--prod" in sys.argv
 MOVE = r"C:\Users\hwangseunghyun\Downloads\21. 시설자재 관리 Master File.xlsx"
 SAFE = r"C:\Users\hwangseunghyun\Downloads\00. 시설자재 기준 테이블_20260805.xlsx"
-DB = dict(host="127.0.0.1", port=3307, user="mpark", password="mpark", database="mpark_wms", charset="utf8mb4")
+DB = (dict(host="hayabusa.proxy.rlwy.net", port=22649, user="root",
+           password="SBNpsSCcANOmGcXuFHgQhiSvMgrrYpwL", database="railway", charset="utf8mb4")
+      if PROD else
+      dict(host="127.0.0.1", port=3307, user="mpark", password="mpark", database="mpark_wms", charset="utf8mb4"))
 
 DELETE_KEYS = {("검전기(특고압)", "AC80-30KV"), ("페인트풋", "1 1/2''"), ("페인트풋", "1/2''")}
 RENAME = ("LED 간판 안정기", "GW-03(RS485)", "변압기 온도 콘트롤러")  # (품목,규격) -> 새품목
@@ -150,12 +154,13 @@ def main():
     if cur.fetchone()[0] > 0:
         print("\n[중단] 이미 임포트된 이력(memo=%s)이 있습니다. 재실행 방지." % MARK); conn.close(); return
 
-    ADMIN = ("ebcce85f-ac63-4175-ba24-cca3dbcd0583", "admin")
-    CX = {  # complex_name -> (complex_id, storage_location_id, zone_id, location_label)
-        "랜드": ("b71d8335-72ae-4238-ae57-1abc55889886", "6b951e1d-b280-4eb5-9a4d-917e9bdf513d", "69b2494b-a151-4844-998c-e2bd1bf63d32", "기본창고 > 기본위치"),
-        "타워": ("39feef02-9b14-434b-86b6-51bee5dee7a8", "de25463b-80a4-482a-89b3-6ec4381ca842", "243ce426-c03c-434d-8991-7d34727227b6", "기본창고 > 기본위치"),
-        "허브": ("a088b269-aaaa-4ba7-b1ca-bc237849db1a", "2903eecb-078f-4ac9-bdf0-56afac4a6ce0", "c0054d27-4142-452f-9eae-a119497f1d59", "기본창고 > 기본위치"),
-    }
+    # 대상 DB에서 동적 조회(로컬/운영 id가 다르므로 하드코딩 금지)
+    cur.execute("SELECT id, display_name FROM profiles WHERE username='admin'")
+    _a = cur.fetchone(); ADMIN = (_a[0], _a[1]) if _a else (None, "시스템")
+    cur.execute("""SELECT complex_name, MIN(complex_id), MIN(storage_location_id), MIN(zone_id), MIN(location_label)
+                   FROM stock WHERE complex_name IS NOT NULL GROUP BY complex_name""")
+    CX = {r[0]: (r[1], r[2], r[3], r[4] or "기본창고 > 기본위치") for r in cur.fetchall()}
+    print(f"[cfg] 대상={'운영' if PROD else '로컬'} · 단지위치 {list(CX.keys())} · admin={ADMIN[1]}")
 
     def new_stock(sku_id, cxn):
         cid, loc, zid, label = CX[cxn]

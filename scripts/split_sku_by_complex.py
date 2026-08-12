@@ -12,11 +12,13 @@ from collections import defaultdict
 import openpyxl, pymysql
 
 APPLY = "--apply" in sys.argv
+PROD = "--prod" in sys.argv
 SAFE = r"C:\Users\hwangseunghyun\Downloads\00. 시설자재 기준 테이블_20260805.xlsx"
-DB = dict(host="127.0.0.1", port=3307, user="mpark", password="mpark", database="mpark_wms", charset="utf8mb4")
-CXID = {"랜드": "b71d8335-72ae-4238-ae57-1abc55889886",
-        "타워": "39feef02-9b14-434b-86b6-51bee5dee7a8",
-        "허브": "a088b269-aaaa-4ba7-b1ca-bc237849db1a"}
+DB = (dict(host="hayabusa.proxy.rlwy.net", port=22649, user="root",
+           password="SBNpsSCcANOmGcXuFHgQhiSvMgrrYpwL", database="railway", charset="utf8mb4")
+      if PROD else
+      dict(host="127.0.0.1", port=3307, user="mpark", password="mpark", database="mpark_wms", charset="utf8mb4"))
+CXID = {}  # 단지명 -> complex_id : 대상 DB에서 동적 로드(main)
 
 def base_spec(s): return re.sub(r"\s*-\s*\d+ea\(1세트수량\)\s*$", "", str(s or "")).strip()
 def norm(s): return re.sub(r"\s+", "", unicodedata.normalize("NFC", str(s or "")).casefold())
@@ -37,6 +39,9 @@ def load_safety():
 def main():
     safety = load_safety()
     conn = pymysql.connect(**DB, autocommit=False); cur = conn.cursor()
+    cur.execute("SELECT name, id FROM complexes")
+    CXID.update({name: cid for name, cid in cur.fetchall()})  # 대상 DB의 단지 id
+    print(f"[cfg] 대상={'운영' if PROD else '로컬'} · 단지 {list(CXID.keys())}")
     cur.execute("SELECT COUNT(*) FROM skus WHERE complex_id IS NOT NULL")
     if cur.fetchone()[0] > 0 and APPLY:
         print("[중단] 이미 complex 설정된 SKU 있음. 재실행 방지."); conn.close(); return
