@@ -6,6 +6,7 @@ import com.mpark.wms.movement.StockMovementRepository;
 import com.mpark.wms.product.Product;
 import com.mpark.wms.product.ProductRepository;
 import com.mpark.wms.sku.SkuDtos.*;
+import com.mpark.wms.stock.Stock;
 import com.mpark.wms.stock.StockRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -82,7 +83,29 @@ public class SkuService {
         s.setCode(product.getCode() + "-" + String.format("%03d", seq));
         s.setQrGenerated(true);
         apply(s, r, product);
+        // 위치소속: SKU 는 상품의 단지+위치코드를 상속(요청값보다 상품이 우선)
+        if (!isBlank(product.getComplexId())) {
+            s.setComplexId(product.getComplexId());
+            s.setComplexName(nz(product.getComplexName()));
+        }
         Sku saved = repo.save(s);
+        // SKU=단일 위치: 상품 위치에 재고행(qty 0) 1개 자동 생성. 이후 입고/이동은 이 행을 대상으로 한다.
+        if (!isBlank(product.getStorageLocationId())) {
+            Stock st = new Stock();
+            st.setSkuId(saved.getId());
+            st.setComplexId(product.getComplexId());
+            st.setComplexName(nz(product.getComplexName()));
+            st.setStorageLocationId(product.getStorageLocationId());
+            st.setStorageLocationCode(nz(product.getStorageLocationCode()));
+            st.setZoneId(product.getZoneId());
+            st.setZoneName(nz(product.getZoneName()));
+            st.setSubZoneId(product.getSubZoneId());
+            st.setSubZoneName(nz(product.getSubZoneName()));
+            st.setLocationLabel(nz(product.getLocationLabel()));
+            st.setQty(0);
+            st.setStatus("out");
+            stockRepo.save(st);
+        }
         auditService.log("SKU관리", "생성", saved.getId(), saved.getCode(), saved.getProductName(), null, skuSummary(saved));
         return saved;
     }

@@ -90,10 +90,12 @@ function openEdit(l) {
 
 async function save() {
   if (!form.complexId) return toast.error('단지(필수)를 선택하세요.')
+  if (!editing.value && !form.code.trim()) return toast.error('보관위치 코드(필수)를 입력하세요. (예: A01)')
   const complex = complexList.value.find((c) => c.id === form.complexId)
   const zone = zonesAll.value.find((z) => z.id === form.zoneId)
   const sub = subsAll.value.find((s) => s.id === form.subZoneId)
   const payload = {
+    code: form.code.trim(),
     name: form.name.trim(),
     complexId: form.complexId,
     complexName: complex?.name || '',
@@ -139,7 +141,7 @@ async function remove(l) {
 
 <template>
   <div>
-    <PageHeader title="보관위치관리" subtitle="실질적 최종 보관위치. 단지만 필수, 구역·상세구역은 선택. (SKU에 지정되는 위치)">
+    <PageHeader title="보관위치관리" subtitle="실질적 최종 보관위치. 단지 안에서 유일한 코드(예: A01) — 상품코드 채번에 사용. 구역·상세구역은 선택.">
       <button class="btn-primary" @click="openCreate">+ 보관위치 추가</button>
     </PageHeader>
 
@@ -194,16 +196,17 @@ async function remove(l) {
     <BaseModal v-model="modal" :title="editing ? '보관위치 수정' : '보관위치 추가'">
       <div class="space-y-3">
         <div>
-          <label class="label">보관위치 코드</label>
-          <input v-if="editing" :value="form.code" class="input bg-slate-50 font-mono text-slate-400" readonly />
-          <p v-else class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400">저장 시 자동 생성 (예: LOC-000001)</p>
-        </div>
-        <div>
           <label class="label">단지 <span class="text-rose-500">*</span></label>
           <AppSelect v-model="form.complexId" class="w-full" @change="onFormComplexChange">
             <option value="">단지 선택</option>
             <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
           </AppSelect>
+        </div>
+        <div>
+          <label class="label">보관위치 코드 <span class="text-rose-500">*</span> <span class="text-slate-300">(단지 안에서만 유일, 예: A01)</span></label>
+          <input v-if="editing" :value="form.code" class="input bg-slate-50 font-mono text-slate-400" readonly />
+          <input v-else v-model="form.code" class="input font-mono" placeholder="예: A01" maxlength="50" />
+          <p v-if="!editing" class="mt-1 text-xs text-slate-400">상품코드가 이 값으로 채번됩니다 → <span class="font-mono">{{ (complexList.find((c) => c.id === form.complexId)?.code || '단지') }}-{{ form.code.trim() || 'A01' }}-0001</span></p>
         </div>
         <div>
           <label class="label">구역 <span class="text-slate-300">(선택)</span></label>

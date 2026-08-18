@@ -8,6 +8,7 @@ public final class ProductDtos {
     private ProductDtos() {}
 
     public record ProductFilter(
+            String complexId, String zoneId, String storageLocationId,
             String categoryId, String productCodeId, String productDetailId,
             String search, Integer page, Integer pageSize
     ) {}

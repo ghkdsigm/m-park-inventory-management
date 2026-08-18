@@ -21,7 +21,7 @@ const toast = useToast()
 const confirm = ref(null)
 
 const OP = {
-  in:     { title: '입고관리', sub: 'SKU와 보관위치를 선택해 입고합니다. (위치 필수)', qtyLabel: '입고 수량', btn: '입고 처리', btnClass: 'bg-emerald-600 hover:bg-emerald-700' },
+  in:     { title: '입고관리', sub: 'SKU를 선택해 입고합니다. 위치는 SKU에 고정된 보관위치로 자동 반영됩니다.', qtyLabel: '입고 수량', btn: '입고 처리', btnClass: 'bg-emerald-600 hover:bg-emerald-700' },
   out:    { title: '출고관리', sub: '재고(위치)를 선택해 출고합니다.',                qtyLabel: '출고 수량', btn: '출고 처리', btnClass: 'bg-sky-600 hover:bg-sky-700' },
   adjust: { title: '재고조정', sub: '재고(위치)별 수량을 보정합니다.',                qtyLabel: '조정 후 수량', btn: '재고 조정', btnClass: 'bg-amber-500 hover:bg-amber-600' },
   audit:  { title: '재고실사', sub: '실물 카운트로 재고(위치)를 확정합니다.',          qtyLabel: '실사 수량', btn: '실사 확정', btnClass: 'bg-violet-600 hover:bg-violet-700' },
@@ -137,7 +137,7 @@ async function loadVariants() {
   loading.value = true
   try {
     const r = await skus.managePage({
-      categoryId: fCategory.value, productCodeId: fProductCode.value,
+      complexId: filterComplex.value, categoryId: fCategory.value, productCodeId: fProductCode.value,
       search: search.value.trim(), page: page.value, pageSize: pageSize.value,
     })
     variants.value = r.rows
@@ -185,11 +185,11 @@ async function selectItem(x) {
   const skuId = x.skuId || x.id
   movements.value = skuId ? await listMovements(skuId, 6) : []
   if (skuId) { try { quoteInfo.value = await quotes.forSku(skuId) } catch (_) { quoteInfo.value = null } }
-  // 입고: 단지만 SKU에 맞춰 자동 세팅(허브 SKU를 타워에 못 넣게). 구역/상세구역/위치는 사용자가 직접 선택.
+  // 입고: SKU 재고행(위치)을 읽어온다. 있으면 고정표시, 없으면 입고 때 보관위치 선택(단지는 SKU 기준 고정).
   if (isInbound.value && x.id) {
     inComplex.value = x.complexId || ''
-    inZone.value = ''; inSub.value = ''; inLoc.value = '' // 하위는 항상 "선택" 상태로(자동선택 안 함)
-    try { const r = await skus.page({ skuId: x.id, pageSize: 20 }); selectedLocs.value = (r.rows || []).filter((row) => row.qty > 0) } catch (_) { selectedLocs.value = [] }
+    inZone.value = ''; inSub.value = ''; inLoc.value = ''
+    try { const r = await skus.page({ skuId: x.id, pageSize: 5 }); selectedLocs.value = r.rows || [] } catch (_) { selectedLocs.value = [] }
   }
 }
 
@@ -199,7 +199,7 @@ async function submit() {
   if (!Number.isFinite(v) || v < 0) return toast.error('수량을 올바르게 입력하세요.')
   if (!isSet.value && v <= 0) return toast.error('수량은 1 이상이어야 합니다.')
   if (!reason.value) return toast.error('사유를 선택하세요.')
-  if (isInbound.value && !inLoc.value) return toast.error('보관위치를 선택하세요. (입고는 위치 필수)')
+  if (isInbound.value && !selectedLocs.value.length && !inLoc.value) return toast.error('입고할 보관위치를 선택하세요. (이 SKU는 고정 보관위치가 없습니다)')
   const memoVal = reason.value === '기타' ? memo.value : ''
 
   const ok = await confirm.value.ask({
@@ -214,8 +214,9 @@ async function submit() {
   try {
     let r
     if (isInbound.value) {
-      if (!inLoc.value) { working.value = false; return toast.error('보관위치를 선택하세요. (입고는 위치 필수)') }
-      r = await inboundStock(selected.value.id, inLoc.value, v, memoVal, reason.value, opRid.value, purchasePrice.value)
+      // 고정 위치가 있으면 그 위치, 없으면 사용자가 고른 보관위치(inLoc)로 입고.
+      const locId = selectedLocs.value[0]?.storageLocationId || inLoc.value || ''
+      r = await inboundStock(selected.value.id, locId, v, memoVal, reason.value, opRid.value, purchasePrice.value)
     } else if (op.value === 'out') {
       r = await outboundStock(selected.value.stockId, v, memoVal, reason.value, {
         usagePlace: outLocLabel.value, requestDept: requestDept.value.trim(),
@@ -268,7 +269,7 @@ async function confirmVoid() {
       <!-- 선택 목록 -->
       <div class="card lg:col-span-3">
         <div class="flex flex-wrap items-center gap-2 border-b border-slate-100 p-3">
-          <AppSelect v-if="!isInbound" v-model="filterComplex" class="w-auto">
+          <AppSelect v-model="filterComplex" class="w-auto">
             <option value="">전체 단지</option>
             <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
           </AppSelect>
@@ -330,12 +331,6 @@ async function confirmVoid() {
             <p class="text-sm text-slate-600">{{ selected.productName }} <span v-if="specText(selected)" class="text-slate-400">· {{ specText(selected) }}</span></p>
             <p v-if="!isInbound" class="text-xs text-slate-400">📍 {{ selected.complexName }}<span v-if="selected.locationLabel"> › {{ selected.locationLabel }}</span></p>
 
-            <!-- 입고: 선택 SKU 현재 보관위치 -->
-            <div v-if="isInbound && selectedLocs.length" class="mt-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-500">
-              <span class="text-[10px] text-slate-400">현재 보관위치</span>
-              <p v-for="(l, i) in selectedLocs" :key="i" class="truncate">📍 {{ l.complexName }}<span v-if="l.locationLabel"> › {{ l.locationLabel }}</span> · {{ l.qty }}개</p>
-            </div>
-
             <!-- 최근 연결 견적 -->
             <div v-if="quoteInfo" class="my-4 rounded-lg border border-brand-100 bg-brand-50/50 p-3 text-sm">
               <p class="mb-1 text-xs font-semibold text-brand-700">
@@ -352,28 +347,21 @@ async function confirmVoid() {
               <p class="text-3xl font-extrabold" :class="selected.qty <= 0 ? 'text-rose-500' : 'text-brand-600'">{{ selected.qty }}<span class="text-base text-slate-400">개</span></p>
             </div>
 
-            <!-- 입고: 보관위치(필수) -->
-            <div v-if="isInbound" class="my-3 rounded-lg border border-slate-200 p-3">
-              <p class="mb-2 text-xs font-semibold text-slate-500">보관위치 <span class="text-rose-500">*</span> <span class="font-normal text-slate-400">(단지는 SKU에 맞춰 자동)</span></p>
-              <AppSelect v-model="inComplex" class="mb-2 w-full" :disabled="!!selected?.complexId">
-                <option value="">단지 선택</option>
-                <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
-              </AppSelect>
-              <div class="grid grid-cols-2 gap-2">
-                <AppSelect v-model="inZone" class="w-full" :disabled="!inComplex">
-                  <option value="">구역 전체</option>
-                  <option v-for="z in zoneChoices" :key="z.id" :value="z.id">{{ z.name }}</option>
+            <!-- 입고: SKU 고정 위치가 있으면 표시, 없으면 보관위치 선택 -->
+            <div v-if="isInbound" class="my-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p class="text-xs font-semibold text-slate-500">입고 위치</p>
+              <p v-if="selectedLocs.length" class="mt-1 text-sm font-medium text-slate-700">
+                📍 {{ selectedLocs[0].complexName }}<span v-if="selectedLocs[0].storageLocationCode" class="font-mono"> · {{ selectedLocs[0].storageLocationCode }}</span><span v-if="selectedLocs[0].locationLabel"> › {{ selectedLocs[0].locationLabel }}</span>
+                <span class="ml-1 text-[11px] text-slate-400">(SKU 고정)</span>
+              </p>
+              <template v-else>
+                <p class="mb-1 text-[11px] text-slate-500">이 SKU는 고정 보관위치가 없습니다. 입고할 보관위치를 선택하세요. <span class="text-rose-500">*</span></p>
+                <AppSelect v-model="inLoc" class="w-full">
+                  <option value="">보관위치 선택</option>
+                  <option v-for="l in locForComplex" :key="l.id" :value="l.id">{{ l.code }} · {{ [l.zoneName, l.subZoneName, l.name].filter(Boolean).join(' › ') || l.complexName }}</option>
                 </AppSelect>
-                <AppSelect v-model="inSub" class="w-full" :disabled="!inZone">
-                  <option value="">상세구역 전체</option>
-                  <option v-for="sz in subChoices" :key="sz.id" :value="sz.id">{{ sz.name }}</option>
-                </AppSelect>
-              </div>
-              <AppSelect v-model="inLoc" class="mt-2 w-full">
-                <option value="">보관위치 선택</option>
-                <option v-for="l in locOptions" :key="l.id" :value="l.id">{{ l.code }} · {{ [l.zoneName, l.subZoneName, l.name].filter(Boolean).join(' › ') || '단지 전체' }}</option>
-              </AppSelect>
-              <p v-if="inComplex && !locForComplex.length" class="mt-1 text-[11px] text-amber-600">이 단지에 보관위치가 없습니다. 보관위치관리에서 먼저 등록하세요.</p>
+                <p v-if="inComplex && !locForComplex.length" class="mt-1 text-[11px] text-amber-600">이 단지에 보관위치가 없습니다. 보관위치관리에서 먼저 등록하세요.</p>
+              </template>
             </div>
 
             <label class="label">{{ cfg.qtyLabel }}</label>

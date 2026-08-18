@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { products, categories, productCodes, productDetails } from '@/services/db'
+import { products, categories, productCodes, productDetails, complexes, storageLocations } from '@/services/db'
 import { useToast } from '@/composables/useToast'
 import { useBusy } from '@/composables/useBusy'
 import Pager from '@/components/ui/Pager.vue'
@@ -26,12 +26,35 @@ const CHAIN = [
 const loading = ref(true)
 const list = ref([])
 const data = reactive({}) // 기준정보 목록
+const complexList = ref([]) // 단지 목록
+const locList = ref([])     // 보관위치(보관위치) 목록
 const search = ref('')
 // 필터 기본값 '' → 셀렉트 "전체 …" 가 기본 선택되도록
 const filterSel = reactive(Object.fromEntries(CHAIN.map((c) => [c.col, ''])))
 
+// 위치 축 필터 (단지 → 구역 → 보관위치)
+const filterComplex = ref('')
+const filterZone = ref('')
+const filterLoc = ref('')
+const locForFilterComplex = computed(() => locList.value.filter((l) => l.complexId === filterComplex.value))
+const zoneFilterChoices = computed(() => {
+  const m = new Map()
+  locForFilterComplex.value.forEach((l) => l.zoneId && m.set(l.zoneId, l.zoneName))
+  return [...m].map(([id, name]) => ({ id, name }))
+})
+const locFilterOptions = computed(() => locForFilterComplex.value.filter((l) => !filterZone.value || l.zoneId === filterZone.value))
+watch(filterComplex, () => { filterZone.value = ''; filterLoc.value = '' })
+watch(filterZone, () => { filterLoc.value = '' })
+watch([filterComplex, filterZone, filterLoc], () => { page.value = 1; fetchPage() })
+
 async function loadMasters() {
-  try { await Promise.all(CHAIN.map(async (c) => (data[c.col] = await c.board.list()))) } catch (e) { /* 옵션 로드 실패 무시 */ }
+  try {
+    await Promise.all([
+      ...CHAIN.map(async (c) => (data[c.col] = await c.board.list())),
+      (async () => (complexList.value = await complexes.list()))(),
+      (async () => (locList.value = await storageLocations.list()))(),
+    ])
+  } catch (e) { /* 옵션 로드 실패 무시 */ }
 }
 async function load() {
   await loadMasters()
@@ -57,6 +80,7 @@ const total = ref(0)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 function curFilters() {
   return {
+    complexId: filterComplex.value, zoneId: filterZone.value, storageLocationId: filterLoc.value,
     categoryId: filterSel.categories, productCodeId: filterSel.productCodes, productDetailId: filterSel.productDetails,
     search: search.value.trim(),
   }
@@ -89,7 +113,20 @@ watch(page, fetchPage)
 /* ---- 생성/수정 ---- */
 const modal = ref(false)
 const editing = ref(null)
-const form = reactive({ code: '', name: '', maker: '', barcode: '', note: '', price: 0, mainImageUrl: '', images: [], sel: {} })
+const form = reactive({ code: '', name: '', maker: '', barcode: '', note: '', price: 0, mainImageUrl: '', images: [], sel: {}, complexId: '', storageLocationId: '' })
+
+// 선택한 단지의 보관위치만
+const formLocs = computed(() => locList.value.filter((l) => l.complexId === form.complexId))
+function onFormComplexChange() { form.storageLocationId = '' }
+const selectedComplex = computed(() => complexList.value.find((c) => c.id === form.complexId))
+const selectedLoc = computed(() => locList.value.find((l) => l.id === form.storageLocationId))
+const selectedCategory = computed(() => (data.categories || []).find((c) => c.id === form.sel.categories) || null)
+// 채번 미리보기: {단지코드}-{카테고리}-0001 (순번은 단지+카테고리별 1부터)
+const codePreview = computed(() => {
+  if (!selectedComplex.value || !selectedCategory.value) return ''
+  const catToken = (selectedCategory.value.name || '').replace(/\s/g, '')
+  return `${selectedComplex.value.code}-${catToken}-0001`
+})
 const addingImg = ref(false)
 const galleryInput = ref(null)
 
@@ -119,7 +156,7 @@ const formOptions = (idx) => options(idx, form.sel)
 function openCreate() {
   if (!(data.categories || []).length) return toast.error('먼저 카테고리를 1개 이상 등록하세요.')
   editing.value = null
-  Object.assign(form, { code: '', name: '', maker: '', barcode: '', note: '', price: 0, mainImageUrl: '', images: [], sel: {} })
+  Object.assign(form, { code: '', name: '', maker: '', barcode: '', note: '', price: 0, mainImageUrl: '', images: [], sel: {}, complexId: '', storageLocationId: '' })
   CHAIN.forEach((c) => (form.sel[c.col] = filterSel[c.col] || ''))
   modal.value = true
 }
@@ -128,6 +165,7 @@ function openEdit(p) {
   Object.assign(form, {
     code: p.code || '', name: p.name, maker: p.maker || '', barcode: p.barcode || '', note: p.note || '', price: p.price ?? 0,
     mainImageUrl: p.mainImageUrl || '', images: Array.isArray(p.images) ? [...p.images] : [], sel: {},
+    complexId: p.complexId || '', storageLocationId: p.storageLocationId || '',
   })
   CHAIN.forEach((c) => (form.sel[c.col] = p[c.idField] || ''))
   modal.value = true
@@ -144,6 +182,10 @@ watch(
 
 async function save() {
   if (!form.name.trim()) return toast.error('상품명을 입력하세요.')
+  if (!editing.value) {
+    if (!form.complexId) return toast.error('단지(필수)를 선택하세요.')
+    // 보관위치는 선택(미지정 시 입고 때 지정). 카테고리 필수는 아래 CHAIN 검사에서 처리.
+  }
   for (const c of CHAIN) {
     if (c.required && !form.sel[c.col]) return toast.error(`${c.label}(필수)를 선택하세요.`)
   }
@@ -156,6 +198,9 @@ async function save() {
     price: Number(form.price) || 0,
     mainImageUrl: form.mainImageUrl || '',
     images: form.images || [],
+    // 위치 소속(단지+보관위치). 상품코드가 이 조합으로 채번됨. 수정 시엔 서버가 무시(코드 고정).
+    complexId: form.complexId || null,
+    storageLocationId: form.storageLocationId || null,
   }
   const pathNames = []
   for (const c of CHAIN) {
@@ -207,11 +252,23 @@ async function remove(p) {
 
 <template>
   <div>
-    <PageHeader title="상품관리" subtitle="실제 재고/판매 대상. 카테고리에 연결합니다. 표준단가는 SKU가 상속합니다.">
+    <PageHeader title="상품 넘버링" subtitle="단지+카테고리에 귀속(보관위치는 선택). 상품코드는 {단지}-{카테고리}-{순번}으로 채번(예: TWR-영선-0001). 같은 제품도 단지/카테고리가 다르면 별도 코드.">
       <button class="btn-primary" @click="openCreate">+ 상품 등록</button>
     </PageHeader>
 
     <div class="no-print mb-3 flex flex-wrap items-center gap-2">
+      <AppSelect v-model="filterComplex" class="w-auto">
+        <option value="">전체 단지</option>
+        <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
+      </AppSelect>
+      <AppSelect v-model="filterZone" class="w-auto" :disabled="!filterComplex">
+        <option value="">전체 구역</option>
+        <option v-for="z in zoneFilterChoices" :key="z.id" :value="z.id">{{ z.name }}</option>
+      </AppSelect>
+      <AppSelect v-model="filterLoc" class="w-auto" :disabled="!filterComplex">
+        <option value="">전체 보관위치</option>
+        <option v-for="l in locFilterOptions" :key="l.id" :value="l.id">{{ l.code }} — {{ l.name || l.locationLabel || '위치' }}</option>
+      </AppSelect>
       <AppSelect v-for="(c, i) in CHAIN" :key="c.col" v-model="filterSel[c.col]" class="w-auto">
         <option value="">전체 {{ c.label }}</option>
         <option v-for="o in options(i, filterSel)" :key="o.id" :value="o.id">{{ o.name }}</option>
@@ -231,6 +288,7 @@ async function remove(p) {
           <tr>
             <th class="px-4 py-2.5 font-semibold">상품코드</th>
             <th class="px-4 py-2.5 font-semibold">상품명</th>
+            <th class="px-4 py-2.5 font-semibold">단지 · 보관위치</th>
             <th class="px-4 py-2.5 font-semibold">기준정보 경로</th>
             <th class="px-4 py-2.5 font-semibold">제조사</th>
             <th class="px-4 py-2.5 text-right font-semibold">관리</th>
@@ -248,6 +306,10 @@ async function remove(p) {
                 </div>
               </div>
             </td>
+            <td class="px-4 py-3 text-xs text-slate-500">
+              <span v-if="p.complexName || p.storageLocationCode">📍 {{ p.complexName }}<span v-if="p.storageLocationCode" class="font-mono"> · {{ p.storageLocationCode }}</span><span v-if="p.locationLabel" class="text-slate-400"> › {{ p.locationLabel }}</span></span>
+              <span v-else>—</span>
+            </td>
             <td class="px-4 py-3 text-xs text-slate-500">{{ p.pathLabel || '—' }}</td>
             <td class="px-4 py-3 text-slate-500">{{ p.maker || '—' }}</td>
             <td class="px-4 py-3 text-right">
@@ -263,12 +325,23 @@ async function remove(p) {
 
     <BaseModal v-model="modal" :title="editing ? '상품 수정' : '상품 등록'" size="lg">
       <div class="space-y-3">
-        <div>
-          <label class="label">상품코드</label>
-          <input v-if="editing" :value="form.code" class="input bg-slate-50 font-mono text-slate-400" readonly />
-          <p v-else class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400">
-            저장 시 자동 생성됩니다 (예: P-000001)
-          </p>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label class="label">단지 <span class="text-rose-500">*</span></label>
+            <input v-if="editing" :value="selectedComplex?.name || form.complexId" class="input bg-slate-50 text-slate-400" readonly />
+            <AppSelect v-else v-model="form.complexId" class="w-full" @change="onFormComplexChange">
+              <option value="">단지 선택</option>
+              <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }} ({{ c.code }})</option>
+            </AppSelect>
+          </div>
+          <div>
+            <label class="label">보관위치 <span class="text-slate-300">(선택)</span></label>
+            <input v-if="editing" :value="selectedLoc ? selectedLoc.code : (form.storageLocationId || '미지정 (입고 때 지정)')" class="input bg-slate-50 font-mono text-slate-400" readonly />
+            <AppSelect v-else v-model="form.storageLocationId" class="w-full" :disabled="!form.complexId">
+              <option value="">{{ form.complexId ? '지정 안 함 (입고 때 선택)' : '단지 먼저 선택' }}</option>
+              <option v-for="l in formLocs" :key="l.id" :value="l.id">{{ l.code }} — {{ l.name || l.locationLabel || '위치' }}</option>
+            </AppSelect>
+          </div>
         </div>
         <div>
           <label class="label">상품명 *</label>
@@ -310,6 +383,13 @@ async function remove(p) {
               <option v-for="o in formOptions(i)" :key="o.id" :value="o.id">{{ o.name }} ({{ o.code }})</option>
             </AppSelect>
           </div>
+        </div>
+        <div>
+          <label class="label">상품코드</label>
+          <input v-if="editing" :value="form.code" class="input bg-slate-50 font-mono text-slate-400" readonly />
+          <p v-else class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm" :class="codePreview ? 'text-brand-700 font-mono' : 'text-slate-400'">
+            {{ codePreview ? `채번 예정: ${codePreview}  (SKU: ${codePreview}-001)` : '단지와 카테고리를 선택하면 상품코드가 정해집니다' }}
+          </p>
         </div>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>

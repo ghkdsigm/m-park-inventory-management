@@ -22,6 +22,10 @@ onMounted(async () => {
       <span class="text-sm">불러오는 중…</span>
     </div>
   </div>
-  <RouterView v-else />
+  <RouterView v-else v-slot="{ Component }">
+    <keep-alive include="SkuScanHome">
+      <component :is="Component" />
+    </keep-alive>
+  </RouterView>
   <ToastHost />
 </template>

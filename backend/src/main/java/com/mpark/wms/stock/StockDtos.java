@@ -27,7 +27,8 @@ public final class StockDtos {
     /** 실사 오차 정상처리 — 재고행 대상 + 사유 */
     public record AuditResolveRequest(String reason) {}
 
-    /** 재고이동 — 출발 재고행 → 도착 보관위치(필수). 같은 SKU의 도착 재고행에 합류. */
-    public record TransferRequest(String stockId, String toStorageLocationId, Integer qty, String memo, String reason, String requestId) {}
+    /** 재고이동 — SKU=단일 위치. 그 SKU의 재고행을 도착 위치코드로 relocate(수량 그대로, 코드 불변).
+     *  stockId 또는 skuId 중 하나로 대상 지정. qty 는 사용하지 않음(전량 relocate). */
+    public record TransferRequest(String stockId, String skuId, String toStorageLocationId, Integer qty, String memo, String reason, String requestId) {}
     public record TransferResult(String transferId, String fromStockId, String toStockId, int qty, boolean relocated) {}
 }

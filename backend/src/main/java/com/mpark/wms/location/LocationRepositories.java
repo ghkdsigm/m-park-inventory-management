@@ -17,4 +17,5 @@ interface SubZoneRepository extends JpaRepository<SubZone, String> {
 interface StorageLocationRepository extends JpaRepository<StorageLocation, String> {
     List<StorageLocation> findAllByOrderByCreatedAtDesc();
     List<StorageLocation> findByComplexIdOrderByCodeAsc(String complexId);
+    boolean existsByComplexIdAndCode(String complexId, String code);
 }

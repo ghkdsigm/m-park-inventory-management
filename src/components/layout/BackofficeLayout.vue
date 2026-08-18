@@ -37,16 +37,19 @@ watch(() => route.name, loadAlerts) // 화면 이동 시 갱신(입출고 후 �
 const allNav = computed(() => [
   { name: 'dashboard', label: '대시보드', icon: 'grid', to: { name: 'dashboard' }, group: '' },
 
-  { name: 'categories', label: '카테고리관리', icon: 'folder', to: { name: 'categories' }, group: '기준정보관리', manage: true },
-  { name: 'productCodes', label: '제품코드관리', icon: 'tag', to: { name: 'productCodes' }, group: '기준정보관리', manage: true },
-  { name: 'productDetails', label: '제품상세코드관리', icon: 'detail', to: { name: 'productDetails' }, group: '기준정보관리', manage: true },
+  // 5뎁스 기준정보 흐름: 단지 → 위치코드(구역·상세구역) → 보관위치 → 카테고리 → 상품넘버링 → SKU
+  { name: 'complexes', label: '단지관리', icon: 'building', to: { name: 'complexes' }, group: '1단계 · 단지', manage: true },
 
-  { name: 'products', label: '상품관리', icon: 'box', to: { name: 'products' }, group: '상품관리', manage: true },
-  { name: 'skus', label: 'SKU관리', icon: 'sku', to: { name: 'skus' }, group: '상품관리', manage: true },
+  { name: 'locations', label: '위치코드관리', icon: 'pin', to: { name: 'locations' }, group: '2단계 · 위치코드', manage: true },
+  { name: 'storageLocations', label: '보관위치관리', icon: 'box', to: { name: 'storageLocations' }, group: '2단계 · 위치코드', manage: true },
 
-  { name: 'complexes', label: '단지관리', icon: 'building', to: { name: 'complexes' }, group: '위치관리', manage: true },
-  { name: 'locations', label: '위치코드관리', icon: 'pin', to: { name: 'locations' }, group: '위치관리', manage: true },
-  { name: 'storageLocations', label: '보관위치관리', icon: 'box', to: { name: 'storageLocations' }, group: '위치관리', manage: true },
+  { name: 'categories', label: '카테고리관리', icon: 'folder', to: { name: 'categories' }, group: '3단계 · 카테고리', manage: true },
+  { name: 'productCodes', label: '제품코드관리', icon: 'tag', to: { name: 'productCodes' }, group: '3단계 · 카테고리', manage: true },
+  { name: 'productDetails', label: '제품상세코드관리', icon: 'detail', to: { name: 'productDetails' }, group: '3단계 · 카테고리', manage: true },
+
+  { name: 'products', label: '상품 넘버링', icon: 'box', to: { name: 'products' }, group: '4단계 · 상품 넘버링', manage: true },
+
+  { name: 'skus', label: 'SKU관리', icon: 'sku', to: { name: 'skus' }, group: '5단계 · SKU', manage: true },
 
   { name: 'inbound', label: '입고관리', icon: 'inbound', to: { name: 'inbound' }, group: '입/출고관리', stock: true },
   { name: 'outbound', label: '출고관리', icon: 'outbound', to: { name: 'outbound' }, group: '입/출고관리', stock: true },

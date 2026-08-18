@@ -22,6 +22,9 @@ public class ProductQueryRepository {
     public ProductPageResult managePage(ProductFilter f) {
         Map<String, Object> p = new HashMap<>();
         StringBuilder w = new StringBuilder(" from Product pr where 1=1 ");
+        if (nb(f.complexId()))         { w.append(" and pr.complexId = :complexId ");             p.put("complexId", f.complexId()); }
+        if (nb(f.zoneId()))            { w.append(" and pr.zoneId = :zoneId ");                   p.put("zoneId", f.zoneId()); }
+        if (nb(f.storageLocationId())) { w.append(" and pr.storageLocationId = :storageLocationId "); p.put("storageLocationId", f.storageLocationId()); }
         if (nb(f.categoryId()))      { w.append(" and pr.categoryId = :categoryId ");           p.put("categoryId", f.categoryId()); }
         if (nb(f.productCodeId()))   { w.append(" and pr.productCodeId = :productCodeId ");      p.put("productCodeId", f.productCodeId()); }
         if (nb(f.productDetailId())) { w.append(" and pr.productDetailId = :productDetailId ");  p.put("productDetailId", f.productDetailId()); }

@@ -24,4 +24,23 @@ public class CodeGenerator {
         c.setVal(v);
         return prefix + "-" + String.format("%06d", v);
     }
+
+    /**
+     * 스코프별 순번 채번 — 카운터 행이 없으면 만든다(예: "products:{위치id}"는 위치마다 1부터).
+     * 반환값은 증가된 순번(long). 코드 문자열 조립은 호출측이 담당한다.
+     */
+    @Transactional
+    public long nextValue(String seqName) {
+        SeqCounter c = repo.findByNameForUpdate(seqName).orElse(null);
+        if (c == null) {
+            c = new SeqCounter();
+            c.setName(seqName);
+            c.setVal(0);
+            repo.saveAndFlush(c);
+            c = repo.findByNameForUpdate(seqName).orElse(c); // 생성 후 락 재획득
+        }
+        long v = c.getVal() + 1;
+        c.setVal(v);
+        return v;
+    }
 }

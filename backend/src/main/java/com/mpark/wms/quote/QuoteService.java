@@ -76,12 +76,8 @@ public class QuoteService {
         String site = parsed.path("site").asText("");
         BigDecimal totalAmount = toDecimal(parsed.path("totalAmount"));
 
-        // 월 1회 제한: 같은 (단지·업체·월) 견적서가 이미 있으면 업로드 차단
-        if (existsForMonth(blankToNull(complexId), vendorName, quoteDate)) {
-            String mm = quoteDate != null ? quoteDate.getYear() + "년 " + quoteDate.getMonthValue() + "월 " : "";
-            throw ApiException.badRequest("이미 " + mm + "'" + vendorName + "' 업체의 " + nz(complexName)
-                    + " 견적서가 등록되어 있습니다. (단지·업체·월 1회만 업로드 가능)");
-        }
+        // 월 1회 제한(단지·업체·견적월)은 최종 저장(create)에서 검사한다.
+        // 견적월을 검토 화면에서 사용자가 고르므로, 업로드 시점(PDF 파싱 날짜) 사전차단은 하지 않는다.
 
         // 품목 + SKU 자동추천
         List<ItemDto> items = new ArrayList<>();
@@ -101,7 +97,7 @@ public class QuoteService {
                 BigDecimal vat = toDecimal(it.path("vat"));
 
                 String suggestedSkuId = null, suggestedLabel = null, matchStatus = "unmatched";
-                Map<String, Object> hit = suggestSku(name, site);
+                Map<String, Object> hit = suggestSku(name, site, complexName);
                 if (hit != null) {
                     suggestedSkuId = str(hit.get("skuId"));
                     suggestedLabel = (str(hit.get("code")) + " " + str(hit.get("productName"))).trim();
@@ -184,9 +180,9 @@ public class QuoteService {
         if (nb(yearMonth)) {
             try {
                 LocalDate ms = LocalDate.parse(yearMonth + "-01");
-                // 월 필터는 업로드월(createdAt) 기준
-                w.append(" and q.createdAt >= :ms and q.createdAt < :me");
-                p.put("ms", ms.atStartOfDay()); p.put("me", ms.plusMonths(1).atStartOfDay());
+                // 월 필터는 견적월(quoteDate) 기준
+                w.append(" and q.quoteDate >= :ms and q.quoteDate < :me");
+                p.put("ms", ms); p.put("me", ms.plusMonths(1));
             } catch (Exception ignored) {}
         }
         if (nb(search)) {
@@ -215,11 +211,11 @@ public class QuoteService {
                 "select distinct q.vendorName from Quote q where q.vendorName <> '' order by q.vendorName", String.class).getResultList();
         List<String> complexes = em.createQuery(
                 "select distinct q.complexName from Quote q where q.complexName <> '' order by q.complexName", String.class).getResultList();
-        // 월 목록은 업로드월(createdAt) 기준
-        List<java.time.LocalDateTime> dates = em.createQuery(
-                "select q.createdAt from Quote q where q.createdAt is not null order by q.createdAt desc", java.time.LocalDateTime.class).getResultList();
+        // 월 목록은 견적월(quoteDate) 기준
+        List<LocalDate> dates = em.createQuery(
+                "select q.quoteDate from Quote q where q.quoteDate is not null order by q.quoteDate desc", LocalDate.class).getResultList();
         java.util.List<String> months = new java.util.ArrayList<>();
-        for (java.time.LocalDateTime d : dates) {
+        for (LocalDate d : dates) {
             String ym = String.format("%04d-%02d", d.getYear(), d.getMonthValue());
             if (!months.contains(ym)) months.add(ym);
         }
@@ -365,18 +361,27 @@ public class QuoteService {
     /* ============ 내부 ============ */
 
     /**
-     * 품명 키워드로 기존 SKU 후보를 찾는다. 견적 현장(site)이 있으면 그 단지 SKU를 우선 추천
-     * (같은 품목·규격이 단지별 SKU로 나뉘므로). 단지 일치 후보가 없으면 최상위 후보.
+     * 품명 키워드로 기존 SKU 후보를 찾는다. 상품·SKU가 (단지+위치)별로 나뉘므로 단지 매칭이 중요.
+     * 우선순위: ① 업로더가 고른 단지(complexName) 일치 → ② 견적 현장(site) 텍스트에 단지명 포함 → ③ 최상위 후보.
      */
-    private Map<String, Object> suggestSku(String name, String site) {
+    private Map<String, Object> suggestSku(String name, String site, String complexName) {
+        String cx = complexName == null ? "" : complexName.replaceAll("\\s", "");
         String s = site == null ? "" : site.replaceAll("\\s", "");
         for (String kw : matchKeywords(name)) {
             List<Map<String, Object>> hits = chatQueryService.searchSku(kw, 5);
             if (hits != null && !hits.isEmpty()) {
+                // ① 업로더가 지정한 단지와 정확히 일치하는 후보 우선
+                if (!cx.isBlank()) {
+                    for (Map<String, Object> h : hits) {
+                        String hc = str(h.get("complexName")).replaceAll("\\s", "");
+                        if (!hc.isBlank() && hc.equals(cx)) return h;
+                    }
+                }
+                // ② PDF 현장(site) 텍스트에 단지명이 포함된 후보
                 if (!s.isBlank()) {
                     for (Map<String, Object> h : hits) {
                         String hc = str(h.get("complexName")).replaceAll("\\s", "");
-                        if (!hc.isBlank() && s.contains(hc)) return h; // 현장에 단지명 포함 → 그 단지 SKU
+                        if (!hc.isBlank() && s.contains(hc)) return h;
                     }
                 }
                 return hits.get(0);

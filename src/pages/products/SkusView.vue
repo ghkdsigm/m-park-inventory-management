@@ -157,6 +157,8 @@ watch(() => form.productId, (pid) => {
   const p = productList.value.find((x) => x.id === pid)
   if (p && (!form.price || Number(form.price) === 0)) form.price = p.price || 0
 })
+// 단지·보관위치는 상품에서 상속 → 선택 상품 표시용
+const selectedProduct = computed(() => productList.value.find((p) => p.id === form.productId) || null)
 
 // 상품 찾기 연쇄 필터 (카테고리>제품코드>상세코드)
 const psel = reactive({ categoryId: '', productCodeId: '', productDetailId: '' })
@@ -227,8 +229,8 @@ async function save() {
   if (!form.productId) return toast.error('상품을 선택하세요.')
   if (!hasAnyAttr()) return toast.error('규격·색상·출시년도·생산년도·구매목적·단가·안전재고 중 최소 1개는 입력해야 합니다.')
   const product = productList.value.find((p) => p.id === form.productId)
-  const complexName = complexList.value.find((c) => c.id === form.complexId)?.name || ''
-  const cx = { complexId: form.complexId || null, complexName }
+  // 단지·위치는 상품에서 상속(백엔드도 상품 기준으로 확정). 폼에서 별도 선택하지 않는다.
+  const cx = { complexId: product?.complexId || null, complexName: product?.complexName || '' }
   const baseDate = form.lastReplacedAt ? new Date(form.lastReplacedAt) : null
   const lifecycle = {
     lifecycleEnabled: !!form.lifecycleEnabled,
@@ -266,7 +268,7 @@ async function save() {
       if (pendingQuoteItem.value) {
         try { await quotes.linkItem(pendingQuoteItem.value.quoteItemId, r.id); extra = ' · 견적 연결됨' } catch (_) { /* 링크 실패는 무시 */ }
       }
-      toast.success(`SKU 생성 완료 (${r.code})${extra} · 재고는 입고에서 위치별로 등록됩니다`)
+      toast.success(`SKU 생성 완료 (${r.code})${extra} · 재고는 입고에서 등록됩니다`)
     }
     modal.value = false
     await load()
@@ -454,18 +456,18 @@ async function printSelected() {
           </AppSelect>
         </div>
         <div>
-          <label class="label">단지 <span class="text-slate-400">(같은 품목·규격도 단지별 별도 SKU)</span></label>
-          <AppSelect v-model="form.complexId" class="w-full">
-            <option value="">단지 선택 안 함</option>
-            <option v-for="c in complexList" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </AppSelect>
+          <label class="label">단지 · 보관위치 <span class="text-slate-400">(상품에서 자동 상속)</span></label>
+          <div v-if="selectedProduct" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            📍 {{ selectedProduct.complexName || '단지 미지정' }}<span v-if="selectedProduct.storageLocationCode" class="font-mono"> · {{ selectedProduct.storageLocationCode }}</span><span v-if="selectedProduct.locationLabel" class="text-slate-400"> › {{ selectedProduct.locationLabel }}</span>
+          </div>
+          <p v-else class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400">상품을 선택하면 단지·위치가 표시됩니다</p>
         </div>
         <div>
           <label class="label">SKU 코드</label>
           <input v-if="editing" :value="form.code" class="input bg-slate-50 font-mono text-slate-400" readonly />
-          <p v-else class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400">상품코드 기반 자동 생성 (예: P-000001-001)</p>
+          <p v-else class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm" :class="selectedProduct ? 'font-mono text-brand-700' : 'text-slate-400'">{{ selectedProduct ? `채번 예정: ${selectedProduct.code}-001` : '상품 선택 시 자동 생성 (상품코드-001)' }}</p>
         </div>
-        <p class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">규격·색상·출시년도·생산년도·구매목적·단가·안전재고 중 <b>최소 1개</b>는 입력해야 저장됩니다. 재고 수량은 <b>입고</b>에서 위치별로 등록합니다.</p>
+        <p class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">규격·색상·출시년도·생산년도·구매목적·단가·안전재고 중 <b>최소 1개</b>는 입력해야 저장됩니다. 재고 수량은 <b>입고</b>에서 등록합니다. (위치는 상품에 고정)</p>
         <div>
           <label class="label">규격 / 사양 <span class="text-slate-400">(SKU 구분 — 관리자가 직접 입력. 예: 2구, 3구, 방수형)</span></label>
           <input v-model="form.spec" class="input" placeholder="예: 2구 / 3구 / 5m / 방수형" />

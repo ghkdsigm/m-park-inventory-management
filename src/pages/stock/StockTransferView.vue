@@ -87,31 +87,27 @@ async function submit() {
   if (!toLoc.value) return toast.error('도착 보관위치를 선택하세요.')
   if (toLoc.value === selected.value.storageLocationId) return toast.error('출발지와 도착지가 같습니다.')
   if (!reason.value) return toast.error('사유를 선택하세요.')
-  const v = Number(qty.value)
-  if (!Number.isFinite(v) || v <= 0) return toast.error('이동 수량을 입력하세요.')
-  if (v > selected.value.qty) return toast.error(`재고 부족: 현재 ${selected.value.qty}개`)
 
   const dest = storageLocs.value.find((l) => l.id === toLoc.value)
   const destLabel = dest ? [dest.complexName, dest.zoneName, dest.subZoneName, dest.name].filter(Boolean).join(' › ') + (dest.code ? ` (${dest.code})` : '') : ''
   const ok = await confirm.value.ask({
-    title: '재고이동',
-    message: `${selected.value.code} · ${v}개 이동\n출발: ${selected.value.complexName}${selected.value.locationLabel ? ' › ' + selected.value.locationLabel : ''}\n도착: ${destLabel}\n이동하시겠습니까?`,
-    confirmText: '재고 이동',
+    title: '위치 재배치',
+    message: `${selected.value.code} (재고 ${selected.value.qty}개)\n출발: ${selected.value.complexName}${selected.value.locationLabel ? ' › ' + selected.value.locationLabel : ''}\n도착: ${destLabel}\n이 SKU를 통째로 재배치합니다. 수량은 그대로 유지됩니다. (코드 불변)`,
+    confirmText: '위치 재배치',
   })
   if (!ok) return
   if (!opRid.value) opRid.value = newRid()
 
   working.value = true
   try {
-    const r = await transferStock({
+    await transferStock({
       stockId: selected.value.stockId,
       toStorageLocationId: toLoc.value,
-      qty: v,
       reason: reason.value === '기타' ? (memo.value || '기타') : reason.value,
       requestId: opRid.value,
     })
     opRid.value = ''
-    toast.success(r.relocated ? '위치가 이동되었습니다.' : `재고이동 완료 · ${v}개`)
+    toast.success('위치가 재배치되었습니다.')
     selected.value = null
     await fetchPage()
   } catch (e) { toast.error(e.message || '이동 실패') } finally { working.value = false }
@@ -120,7 +116,7 @@ async function submit() {
 
 <template>
   <div>
-    <PageHeader title="재고이동" subtitle="재고(위치)를 골라 다른 보관위치로 이동합니다. 다른 단지로 옮기면 출고+입고가 자동 기록됩니다." />
+    <PageHeader title="재고이동" subtitle="SKU를 골라 다른 보관위치로 통째로 재배치합니다. 수량은 유지되고 SKU코드도 그대로(위치 이력 기록)." />
     <div class="grid gap-4 lg:grid-cols-5">
       <!-- 출발 재고행 -->
       <div class="card lg:col-span-3">
@@ -195,8 +191,7 @@ async function submit() {
               <p v-if="toComplex && !locForComplex.length" class="mt-1 text-[11px] text-amber-600">이 단지에 보관위치가 없습니다.</p>
             </div>
 
-            <label class="label">이동 수량 * <span class="font-normal text-slate-400">(최대 {{ selected.qty }})</span></label>
-            <input v-model.number="qty" type="number" min="1" :max="selected.qty" class="input mb-3 text-lg" />
+            <p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">현재 재고 <b>{{ selected.qty }}개</b>가 통째로 도착 보관위치로 이동합니다. (부분 이동 없음 · SKU코드 유지)</p>
 
             <div class="mb-3">
               <label class="label">사유 / 구분 *</label>
@@ -211,7 +206,7 @@ async function submit() {
             </div>
 
             <button class="btn w-full bg-indigo-600 py-3 text-base text-white hover:bg-indigo-700" :disabled="working" @click="submit">
-              {{ working ? '처리 중…' : '재고 이동' }}
+              {{ working ? '처리 중…' : '위치 재배치' }}
             </button>
           </template>
         </div>

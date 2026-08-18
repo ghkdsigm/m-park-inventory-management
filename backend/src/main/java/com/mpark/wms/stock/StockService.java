@@ -51,13 +51,16 @@ public class StockService {
         int val = nz(r.qty());
         if (val <= 0) throw ApiException.badRequest("수량을 올바르게 입력하세요.");
         if (isBlank(r.skuId())) throw ApiException.badRequest("SKU를 선택하세요.");
-        if (isBlank(r.storageLocationId())) throw ApiException.badRequest("보관위치를 지정하세요.");
 
         Sku sku = skuRepo.findById(r.skuId()).orElseThrow(() -> ApiException.notFound("SKU를 찾을 수 없습니다."));
-        StorageLocation loc = loc(r.storageLocationId());
 
-        Stock st = stockRepo.findBySkuAndLocationForUpdate(sku.getId(), loc.getId())
-                .orElseGet(() -> newStock(sku, loc));
+        // SKU=단일 위치: SKU의 유일한 재고행에 입고. 없으면(레거시) 지정 위치로 생성.
+        Stock st = stockRepo.findBySkuIdForUpdate(sku.getId()).orElse(null);
+        if (st == null) {
+            if (isBlank(r.storageLocationId()))
+                throw ApiException.badRequest("이 SKU의 재고 위치가 없습니다. 상품에 위치코드를 지정하거나 SKU를 다시 등록하세요.");
+            st = newStock(sku, loc(r.storageLocationId()));
+        }
 
         String actor = currentUser.name();
         int before = st.getQty();
@@ -179,54 +182,49 @@ public class StockService {
                 sku == null ? "" : sku.getProductName());
     }
 
-    /* ===================== 재고이동 (재고행 → 도착 위치) ===================== */
+    /* ===================== 재고이동 (SKU 단일 재고행을 도착 위치로 relocate) ===================== */
     public TransferResult transfer(TransferRequest r) {
         if (!currentUser.canManage()) throw ApiException.forbidden("재고이동 권한이 없습니다. 관리자에게 문의하세요.");
         if (!isBlank(r.requestId()) && idemRepo.existsById(r.requestId()))
             throw ApiException.badRequest("이미 처리된 이동 요청입니다. 재고를 새로고침해 확인하세요.");
-        int qty = nz(r.qty());
-        if (isBlank(r.toStorageLocationId())) throw ApiException.badRequest("도착 보관위치를 지정하세요.");
+        if (isBlank(r.toStorageLocationId())) throw ApiException.badRequest("도착 위치코드를 지정하세요.");
 
-        Stock src = stockRepo.findByIdForUpdate(r.stockId())
-                .orElseThrow(() -> ApiException.notFound("출발 재고를 찾을 수 없습니다."));
-        Sku sku = skuRepo.findById(src.getSkuId()).orElseThrow(() -> ApiException.notFound("SKU를 찾을 수 없습니다."));
+        // 출발 재고행: stockId 우선, 없으면 skuId 로 그 SKU의 유일한 행을 잠근다.
+        Stock st = !isBlank(r.stockId())
+                ? stockRepo.findByIdForUpdate(r.stockId()).orElseThrow(() -> ApiException.notFound("출발 재고를 찾을 수 없습니다."))
+                : stockRepo.findBySkuIdForUpdate(r.skuId()).orElseThrow(() -> ApiException.notFound("출발 재고를 찾을 수 없습니다."));
+        Sku sku = skuRepo.findById(st.getSkuId()).orElseThrow(() -> ApiException.notFound("SKU를 찾을 수 없습니다."));
         StorageLocation toLoc = loc(r.toStorageLocationId());
         String actor = currentUser.name();
         LocalDateTime now = LocalDateTime.now();
 
-        if (Objects.equals(src.getStorageLocationId(), toLoc.getId()))
+        if (Objects.equals(st.getStorageLocationId(), toLoc.getId()))
             throw ApiException.badRequest("출발지와 도착지가 같습니다.");
 
-        // 전량 이동이면 relocate(위치 이동), 일부면 분할 이동
-        boolean whole = qty <= 0 || qty >= src.getQty();
-        int moveQty = whole ? src.getQty() : qty;
-        if (moveQty <= 0) throw ApiException.badRequest("이동할 재고가 없습니다.");
+        int qty = st.getQty();
+        String fromLabel = locLabel(st);
 
-        Stock dest = stockRepo.findBySkuAndLocationForUpdate(sku.getId(), toLoc.getId())
-                .orElseGet(() -> newStock(sku, toLoc));
+        // relocate: 재고행의 위치필드만 도착지로 변경(수량 그대로, 코드·재고행 식별자 불변)
+        st.setComplexId(toLoc.getComplexId());
+        st.setComplexName(nz(toLoc.getComplexName()));
+        st.setStorageLocationId(toLoc.getId());
+        st.setStorageLocationCode(nz(toLoc.getCode()));
+        st.setZoneId(toLoc.getZoneId());
+        st.setZoneName(nz(toLoc.getZoneName()));
+        st.setSubZoneId(toLoc.getSubZoneId());
+        st.setSubZoneName(nz(toLoc.getSubZoneName()));
+        st.setLocationLabel(!isBlank(toLoc.getLocationLabel()) ? toLoc.getLocationLabel() : nz(toLoc.getName()));
+        st.setLastMovedBy(actor);
+        st.setLastMovedAt(now);
+        stockRepo.save(st);
 
         String transferId = UUID.randomUUID().toString();
-        String fromLabel = locLabel(src);
+        String toLabel = locLabel(st);
 
-        int sBefore = src.getQty();
-        src.setQty(sBefore - moveQty);
-        src.setStatus(status(src.getQty(), sku.getSafetyStock()));
-        src.setTotalOut(src.getTotalOut() + moveQty);
-        src.setLastMovedBy(actor);
-        src.setLastMovedAt(now);
-        saveMovement(src, sku, "out", moveQty, -moveQty, sBefore, src.getQty(), r.memo(),
-                isBlank(r.reason()) ? "재고이동" : r.reason(), transferId);
-
-        int dBefore = dest.getQty();
-        if (dest.getId() == null && dest.getInitialQty() == 0) dest.setInitialQty(moveQty);
-        dest.setQty(dBefore + moveQty);
-        dest.setStatus(status(dest.getQty(), sku.getSafetyStock()));
-        dest.setTotalIn(dest.getTotalIn() + moveQty);
-        dest.setLastMovedBy(actor);
-        dest.setLastMovedAt(now);
-        stockRepo.save(dest);
-        saveMovement(dest, sku, "in", moveQty, moveQty, dBefore, dest.getQty(), r.memo(),
-                isBlank(r.reason()) ? "재고이동" : r.reason(), transferId);
+        // 원장: 수량변화 없는 위치이동(delta 0, type=move) — 입출고통합조회에 노출
+        StockMovement mv = saveMovement(st, sku, "move", qty, 0, qty, qty,
+                r.memo(), isBlank(r.reason()) ? "재고이동" : r.reason(), transferId);
+        mv.setPathLabel(fromLabel + " → " + toLabel);
 
         // 위치 이동 이력
         LocationLog log = new LocationLog();
@@ -234,19 +232,19 @@ public class StockService {
         log.setSkuCode(sku.getCode());
         log.setProductName(sku.getProductName());
         log.setFromLabel(fromLabel);
-        log.setToLabel(locLabel(dest));
-        log.setStorageLocationId(dest.getStorageLocationId());
-        log.setStorageLocationCode(dest.getStorageLocationCode());
-        log.setLocationLabel(dest.getLocationLabel());
-        log.setComplexName(dest.getComplexName());
+        log.setToLabel(toLabel);
+        log.setStorageLocationId(st.getStorageLocationId());
+        log.setStorageLocationCode(st.getStorageLocationCode());
+        log.setLocationLabel(st.getLocationLabel());
+        log.setComplexName(st.getComplexName());
         log.setByUserId(currentUser.id());
         log.setByName(actor);
         locationLogRepo.save(log);
 
         auditService.log("입/출고관리", "재고이동", sku.getId(),
-                sku.getCode() + " " + fromLabel + " → " + locLabel(dest) + " " + moveQty + "개", sku.getProductName());
-        idemStore(r.requestId(), sBefore, src.getQty(), -moveQty);
-        return new TransferResult(transferId, src.getId(), dest.getId(), moveQty, whole);
+                sku.getCode() + " " + fromLabel + " → " + toLabel + (qty > 0 ? " " + qty + "개" : ""), sku.getProductName());
+        idemStore(r.requestId(), qty, qty, 0);
+        return new TransferResult(transferId, st.getId(), st.getId(), qty, true);
     }
 
     /* ===================== 취소(역분개) ===================== */

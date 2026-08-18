@@ -68,7 +68,7 @@ const fileInput = ref(null)
 const uploading = ref(false)
 const reviewModal = ref(false)
 const form = reactive({
-  vendorName: '', vendorBizNo: '', quoteDate: '', siteLabel: '',
+  vendorName: '', vendorBizNo: '', quoteDate: '', quoteMonth: '', siteLabel: '',
   complexId: '', complexName: '', totalAmount: 0, fileUrl: '', filePath: '',
   items: [],
 })
@@ -96,6 +96,7 @@ async function onFile(e) {
     form.vendorName = r.vendorName || ''
     form.vendorBizNo = r.vendorBizNo || ''
     form.quoteDate = r.quoteDate || ''
+    form.quoteMonth = (r.quoteDate || '').slice(0, 7) // PDF에서 뽑은 견적일의 월을 기본값으로
     form.siteLabel = r.siteLabel || ''
     form.totalAmount = r.totalAmount || 0
     form.fileUrl = r.fileUrl || ''
@@ -171,10 +172,12 @@ const mismatchCount = computed(() => form.items.filter(mismatch).length)
 
 async function save() {
   if (!form.items.length) return toast.error('품목이 없습니다.')
+  if (!form.quoteMonth) return toast.error('견적월을 선택하세요.')
   const payload = {
     vendorName: form.vendorName,
     vendorBizNo: form.vendorBizNo,
-    quoteDate: form.quoteDate || null,
+    // 견적월(YYYY-MM) → 그 달 1일로 저장. 중복 규칙(단지+견적월+업체)의 월 기준.
+    quoteDate: form.quoteMonth ? form.quoteMonth + '-01' : (form.quoteDate || null),
     complexId: form.complexId || null,
     complexName: form.complexName,
     siteLabel: form.siteLabel,
@@ -300,7 +303,7 @@ async function openPdf(url) {
   <!-- 조회 필터 -->
   <div v-if="options.months.length || options.vendors.length || fMonth || fVendor || fComplex" class="mb-3 flex flex-wrap items-center gap-2">
     <AppSelect v-model="fMonth" class="w-auto">
-      <option value="">업로드월 전체</option>
+      <option value="">견적월 전체</option>
       <option v-for="m in options.months" :key="m" :value="m">{{ m }}</option>
     </AppSelect>
     <AppSelect v-model="fVendor" class="w-auto">
@@ -328,8 +331,7 @@ async function openPdf(url) {
       <table v-else class="w-full min-w-[720px] text-sm">
         <thead class="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
-            <th class="px-4 py-2.5 font-semibold">업로드월</th>
-            <th class="px-4 py-2.5 font-semibold">견적일</th>
+            <th class="px-4 py-2.5 font-semibold">견적월</th>
             <th class="px-4 py-2.5 font-semibold">업체</th>
             <th class="px-4 py-2.5 font-semibold">단지명</th>
             <th class="px-4 py-2.5 font-semibold">등록자</th>
@@ -340,8 +342,7 @@ async function openPdf(url) {
         </thead>
         <tbody class="divide-y divide-slate-50">
           <tr v-for="q in list" :key="q.id" class="hover:bg-slate-50/60">
-            <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ fmtMonth(q.createdAt) }}</td>
-            <td class="px-4 py-3 whitespace-nowrap text-slate-500">{{ q.quoteDate || '-' }}</td>
+            <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ q.quoteDate ? q.quoteDate.slice(0, 7) : '-' }}</td>
             <td class="px-4 py-3 font-medium text-slate-800">{{ q.vendorName }}</td>
             <td class="px-4 py-3">
               <span v-if="q.complexName" class="badge bg-brand-50 text-brand-700">{{ q.complexName }}</span>
@@ -368,7 +369,7 @@ async function openPdf(url) {
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div><label class="label">업체명</label><input v-model="form.vendorName" class="input" /></div>
         <div><label class="label">사업자번호</label><input v-model="form.vendorBizNo" class="input" /></div>
-        <div><label class="label">견적일 (YYYY-MM-DD)</label><input v-model="form.quoteDate" class="input" placeholder="2026-07-04" /></div>
+        <div><label class="label">견적월 <span class="text-rose-500">*</span></label><input type="month" v-model="form.quoteMonth" class="input" /></div>
         <div>
           <label class="label">단지 <span class="text-slate-400">(업로드 시 선택 · 고정)</span></label>
           <AppSelect v-model="form.complexId" disabled @change="onComplexChange">

@@ -119,8 +119,13 @@ public class LocationService {
     }
 
     public StorageLocation createStorage(StorageLocationRequest r) {
+        if (isBlank(r.complexId())) throw ApiException.badRequest("단지를 선택하세요.");
+        if (isBlank(r.code())) throw ApiException.badRequest("보관위치 코드를 입력하세요. (예: A01)");
+        String code = r.code().trim();
+        if (storageRepo.existsByComplexIdAndCode(r.complexId(), code))
+            throw ApiException.badRequest("이 단지에 이미 있는 보관위치 코드입니다: " + code);
         StorageLocation s = new StorageLocation();
-        s.setCode(codeGenerator.next("storage_locations", "LOC")); // 자동코드
+        s.setCode(code); // 단지별 수동코드(A01 등)
         apply(s, r);
         StorageLocation saved = storageRepo.save(s);
         auditService.log("위치관리", "보관위치 생성", saved.getId(), saved.getCode(), saved.getComplexName(), null, "name=" + saved.getName() + ", label=" + saved.getLocationLabel());

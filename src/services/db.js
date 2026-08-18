@@ -98,6 +98,9 @@ export const products = {
   /** 상품관리 서버 페이징 */
   async managePage(filters = {}) {
     const r = await api.post('/products/manage-page', {
+      complexId: filters.complexId || null,
+      zoneId: filters.zoneId || null,
+      storageLocationId: filters.storageLocationId || null,
       categoryId: filters.categoryId || null,
       productCodeId: filters.productCodeId || null,
       productDetailId: filters.productDetailId || null,

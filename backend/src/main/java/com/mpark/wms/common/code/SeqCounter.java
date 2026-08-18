@@ -18,7 +18,7 @@ import lombok.Setter;
 public class SeqCounter {
 
     @Id
-    @Column(name = "name", length = 50)
+    @Column(name = "name", length = 120)
     private String name;
 
     @Column(name = "val", nullable = false)

@@ -29,4 +29,9 @@ public interface StockRepository extends JpaRepository<Stock, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from Stock s where s.skuId = :skuId and s.storageLocationId = :locId")
     Optional<Stock> findBySkuAndLocationForUpdate(@Param("skuId") String skuId, @Param("locId") String locId);
+
+    /** SKU=단일 재고행 모델: SKU의 유일한 재고행을 잠그고 가져온다(입고/이동 대상). */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Stock s where s.skuId = :skuId")
+    Optional<Stock> findBySkuIdForUpdate(@Param("skuId") String skuId);
 }

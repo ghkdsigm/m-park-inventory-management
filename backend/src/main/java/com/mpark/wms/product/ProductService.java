@@ -3,7 +3,12 @@ package com.mpark.wms.product;
 import com.mpark.wms.audit.AuditService;
 import com.mpark.wms.common.ApiException;
 import com.mpark.wms.common.code.CodeGenerator;
+import com.mpark.wms.location.StorageLocation;
+import com.mpark.wms.master.Category;
+import com.mpark.wms.master.Complex;
 import com.mpark.wms.product.ProductDtos.*;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +26,7 @@ public class ProductService {
     private final CodeGenerator codeGenerator;
     private final AuditService auditService;
     private final ProductQueryRepository queryRepo;
+    @PersistenceContext private EntityManager em;
 
     @Transactional(readOnly = true)
     public List<Product> list() {
@@ -39,10 +45,35 @@ public class ProductService {
 
     public Product create(ProductRequest r) {
         if (isBlank(r.name())) throw ApiException.badRequest("상품명을 입력하세요.");
+        if (isBlank(r.complexId())) throw ApiException.badRequest("단지를 선택하세요.");
+        if (isBlank(r.categoryId())) throw ApiException.badRequest("카테고리를 선택하세요.");
+        Complex cx = em.find(Complex.class, r.complexId());
+        if (cx == null) throw ApiException.badRequest("단지를 찾을 수 없습니다.");
+        Category cat = em.find(Category.class, r.categoryId());
+        if (cat == null) throw ApiException.badRequest("카테고리를 찾을 수 없습니다.");
+
         Product p = new Product();
-        p.setCode(codeGenerator.next("products", "P")); // 자동코드
+        // 상품코드 = {단지코드}-{카테고리}-{순번4}. 순번은 (단지+카테고리)별로 1부터.
+        long seq = codeGenerator.nextValue("products:" + cx.getId() + ":" + cat.getId());
+        String catToken = nz(cat.getName()).replaceAll("\\s", "");
+        p.setCode(cx.getCode() + "-" + catToken + "-" + String.format("%04d", seq));
         p.setSkuSeq(0);
         apply(p, r);
+        // 단지 확정
+        p.setComplexId(cx.getId());
+        p.setComplexName(nz(cx.getName()));
+        // 보관위치(선택) — 지정된 경우에만 위치 소속을 채운다. SKU 가 이걸 상속(있으면 재고행 자동 생성, 없으면 입고 때 지정).
+        if (!isBlank(r.storageLocationId())) {
+            StorageLocation loc = em.find(StorageLocation.class, r.storageLocationId());
+            if (loc == null) throw ApiException.badRequest("보관위치를 찾을 수 없습니다.");
+            p.setStorageLocationId(loc.getId());
+            p.setStorageLocationCode(nz(loc.getCode()));
+            p.setZoneId(loc.getZoneId());
+            p.setZoneName(nz(loc.getZoneName()));
+            p.setSubZoneId(loc.getSubZoneId());
+            p.setSubZoneName(nz(loc.getSubZoneName()));
+            p.setLocationLabel(!isBlank(loc.getLocationLabel()) ? loc.getLocationLabel() : nz(loc.getName()));
+        }
         Product saved = repo.save(p);
         auditService.log("상품관리", "생성", saved.getId(), saved.getCode(), saved.getName(), null, productSummary(saved));
         return saved;
@@ -76,6 +107,7 @@ public class ProductService {
         p.setMainImageUrl(nz(r.mainImageUrl()));
         p.setImages(r.images() != null ? r.images() : new ArrayList<>());
         p.setPrice(r.price() != null ? r.price() : BigDecimal.ZERO);
+        // 위치 소속(단지+위치코드)은 생성 시 create()에서 확정하며, 코드가 거기서 채번되므로 수정에서는 바꾸지 않는다.
         p.setCategoryId(r.categoryId());
         p.setCategoryName(nz(r.categoryName()));
         p.setProductCodeId(r.productCodeId());

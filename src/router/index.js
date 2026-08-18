@@ -90,9 +90,14 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 }),
 })
 
-router.beforeEach(async (to) => {
+const MOBILE_ROUTES = new Set(['scanHome', 'scan'])
+
+router.beforeEach(async (to, from) => {
   const auth = useAuthStore()
   if (!auth.ready) await auth.init()
+  // 모바일(/s)은 독립 앱처럼 동작 — 모바일 화면에서 백오피스/로그인 등 '밖'으로 나가는 이동
+  // (특히 브라우저 뒤로가기)은 차단하고 모바일 홈으로 되돌린다. 백오피스는 직접 URL 진입으로만.
+  if (MOBILE_ROUTES.has(from.name) && !MOBILE_ROUTES.has(to.name)) return { name: 'scanHome' }
   if (to.meta.public) return true
   if (!auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
   // 등록인은 백오피스 접근 불가 → 모바일 입출고 단말로

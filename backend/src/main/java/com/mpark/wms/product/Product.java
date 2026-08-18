@@ -39,6 +39,18 @@ public class Product extends BaseEntity {
     /** 표준 단가 — 품목(상품)의 단일 가격 출처. SKU 는 생성 시 이 값을 상속한다. */
     private BigDecimal price = BigDecimal.ZERO;
 
+    // 위치 소속(단지 + 위치코드) — 같은 실물이라도 단지/위치가 다르면 별도 상품·코드.
+    // SKU 는 생성 시 이 위치를 상속해 단일 재고행을 그 위치에 만든다.
+    private String complexId;
+    private String complexName = "";
+    private String storageLocationId;
+    private String storageLocationCode = "";
+    private String zoneId;
+    private String zoneName = "";
+    private String subZoneId;
+    private String subZoneName = "";
+    private String locationLabel = "";
+
     private String categoryId;
     private String categoryName = "";
     private String productCodeId;
