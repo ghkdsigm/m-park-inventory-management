@@ -447,7 +447,8 @@ public class StockService {
         };
     }
 
-    static String status(int qty, int safety) {
+    /** 재고상태 판정 단일 출처: 재고 ≤ 0 → 품절, 안전재고>0 이고 재고 ≤ 안전재고 → 부족, 그 외 정상. */
+    public static String status(int qty, int safety) {
         if (qty <= 0) return "out";
         if (safety > 0 && qty <= safety) return "low";
         return "in_stock";

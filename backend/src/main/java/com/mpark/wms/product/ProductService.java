@@ -53,10 +53,9 @@ public class ProductService {
         if (cat == null) throw ApiException.badRequest("카테고리를 찾을 수 없습니다.");
 
         Product p = new Product();
-        // 상품코드 = {단지코드}-{카테고리}-{순번4}. 순번은 (단지+카테고리)별로 1부터.
-        long seq = codeGenerator.nextValue("products:" + cx.getId() + ":" + cat.getId());
-        String catToken = nz(cat.getName()).replaceAll("\\s", "");
-        p.setCode(cx.getCode() + "-" + catToken + "-" + String.format("%04d", seq));
+        // 상품코드 = {단지코드}-{카테고리번호}-P{순번3}. 순번은 (단지+카테고리)별로 1부터.
+        long seq = codeGenerator.nextValue("prodp:" + cx.getId() + ":" + cat.getId());
+        p.setCode(cx.getCode() + "-" + catNum(cat) + "-P" + String.format("%03d", seq));
         p.setSkuSeq(0);
         apply(p, r);
         // 단지 확정
@@ -115,6 +114,13 @@ public class ProductService {
         p.setProductDetailId(r.productDetailId());
         p.setProductDetailName(nz(r.productDetailName()));
         p.setPathLabel(nz(r.pathLabel()));
+    }
+
+    /** 카테고리 코드(CTG-04, CTG-000004 등)에서 끝 숫자만 뽑아 2자리로. 예) "04". 코드체계: 단지-카테고리번호-P순번. */
+    private static String catNum(Category cat) {
+        String code = cat == null ? null : cat.getCode();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)\\s*$").matcher(code == null ? "" : code);
+        return m.find() ? String.format("%02d", Integer.parseInt(m.group(1))) : "00";
     }
 
     private static boolean isBlank(String s) { return s == null || s.isBlank(); }

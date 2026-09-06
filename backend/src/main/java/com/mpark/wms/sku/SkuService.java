@@ -2,12 +2,14 @@ package com.mpark.wms.sku;
 
 import com.mpark.wms.audit.AuditService;
 import com.mpark.wms.common.ApiException;
+import com.mpark.wms.common.code.CodeGenerator;
 import com.mpark.wms.movement.StockMovementRepository;
 import com.mpark.wms.product.Product;
 import com.mpark.wms.product.ProductRepository;
 import com.mpark.wms.sku.SkuDtos.*;
 import com.mpark.wms.stock.Stock;
 import com.mpark.wms.stock.StockRepository;
+import com.mpark.wms.stock.StockService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +33,7 @@ public class SkuService {
     private final StockRepository stockRepo;
     private final StockMovementRepository movementRepo;
     private final AuditService auditService;
+    private final CodeGenerator codeGenerator;
 
     /* ---------- 단순 조회 ---------- */
     @Transactional(readOnly = true)
@@ -80,7 +83,9 @@ public class SkuService {
         int seq = product.getSkuSeq() + 1;
         product.setSkuSeq(seq);
         Sku s = new Sku();
-        s.setCode(product.getCode() + "-" + String.format("%03d", seq));
+        // SKU 코드 = {상품코드}-{고유번호}. 고유번호는 (단지×카테고리)별 1부터, 패딩 없음.
+        long uid = codeGenerator.nextValue("skuuid:" + nz(product.getComplexId()) + ":" + nz(product.getCategoryId()));
+        s.setCode(product.getCode() + "-" + uid);
         s.setQrGenerated(true);
         apply(s, r, product);
         // 위치소속: SKU 는 상품의 단지+위치코드를 상속(요청값보다 상품이 우선)
@@ -113,8 +118,17 @@ public class SkuService {
     public Sku update(String id, SkuRequest r) {
         Sku s = repo.findById(id).orElseThrow(() -> ApiException.notFound("SKU를 찾을 수 없습니다."));
         String before = skuSummary(s);
+        int oldSafety = s.getSafetyStock();
         apply(s, r, null);
         Sku saved = repo.save(s);
+        // 안전재고가 바뀌면 재고행 상태(정상/부족/품절)를 즉시 재계산한다.
+        // (상태는 원래 입고/출고/조정 등 재고 이동 때만 갱신되므로, 안전재고만 수정하면 낡은 상태가 남는다.)
+        if (saved.getSafetyStock() != oldSafety) {
+            for (Stock st : stockRepo.findBySkuId(id)) {
+                st.setStatus(StockService.status(st.getQty(), saved.getSafetyStock()));
+                stockRepo.save(st);
+            }
+        }
         auditService.log("SKU관리", "수정", id, saved.getCode(), saved.getProductName(), before, skuSummary(saved));
         return saved;
     }
