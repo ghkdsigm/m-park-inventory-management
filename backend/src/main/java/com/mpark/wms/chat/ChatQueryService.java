@@ -137,7 +137,8 @@ public class ChatQueryService {
         for (Object[] r : safetySkus) {
             int safety = ((Number) r[3]).intValue();
             long total = totalBySku.getOrDefault(String.valueOf(r[0]), 0L);
-            if (total < safety) {
+            // 시스템 상태 기준과 일치: 0 < 총재고 ≤ 안전재고 → 부족 (총재고 0은 품절이므로 제외)
+            if (total > 0 && total <= safety) {
                 lowCount++;
                 if (lowList.size() < 50) {
                     Map<String, Object> m = new LinkedHashMap<>();
