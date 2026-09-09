@@ -6,25 +6,26 @@ spring:
   application:
     name: mpark-wms
   datasource:
-    url: jdbc:mysql://localhost:3306/mpark_wms?serverTimezone=Asia/Seoul&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    # 서버 이관 시 DB_URL 만 바꿔도 되도록 기본 로컬 값을 환경변수로 래핑
+    url: ${DB_URL:jdbc:mysql://localhost:3306/mpark_wms?serverTimezone=Asia/Seoul&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${DB_USER:mpark}
     password: ${DB_PASSWORD:mpark}
   jpa:
     hibernate:
       # 스키마는 Flyway 가 관리. JPA 는 검증만 (엔티티↔테이블 불일치 시 기동 실패로 조기 발견)
-      ddl-auto: validate
+      ddl-auto: ${JPA_DDL_AUTO:validate}
     open-in-view: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${HIBERNATE_FORMAT_SQL:true}
   flyway:
-    enabled: true
-    locations: classpath:db/migration
-    baseline-on-migrate: true
+    enabled: ${FLYWAY_ENABLED:true}
+    locations: ${FLYWAY_LOCATIONS:classpath:db/migration}
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 12MB
+      max-file-size: ${MAX_FILE_SIZE:10MB}
+      max-request-size: ${MAX_REQUEST_SIZE:12MB}
 
 # 앱 설정 (Phase 5/6 에서 사용)
 app:
@@ -33,7 +34,7 @@ app:
     allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177}
   jwt:
     secret: ${JWT_SECRET:dev-only-secret-please-change-min-32-bytes-long-key-0123456789}
-    expiration-ms: 604800000   # 7일
+    expiration-ms: ${JWT_EXPIRATION_MS:604800000}   # 7일
   storage:
     dir: ${STORAGE_DIR:./uploads}
     public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:8080/files}
@@ -57,4 +58,4 @@ app:
 
 logging:
   level:
-    org.hibernate.SQL: debug
+    org.hibernate.SQL: ${HIBERNATE_SQL_LOG_LEVEL:debug}
