@@ -410,6 +410,7 @@ const view = computed(() => {
               <p class="font-mono text-xs text-brand-600">{{ s.code }}</p>
               <p class="truncate text-sm font-medium text-slate-800">{{ s.productName }}</p>
               <p v-if="s.spec || s.color" class="truncate text-xs text-slate-400">{{ [s.spec, s.color].filter(Boolean).join(' · ') }}</p>
+              <p v-if="s.pathLabel" class="truncate text-xs text-slate-400">{{ s.pathLabel }}</p>
             </div>
             <svg class="h-5 w-5 shrink-0 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6" /></svg>
           </button>

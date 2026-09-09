@@ -88,6 +88,8 @@ public class SkuService {
         s.setCode(product.getCode() + "-" + uid);
         s.setQrGenerated(true);
         apply(s, r, product);
+        // 경로 라벨 = 단지 > 카테고리 > 고유번호 (재고현황 등 경로 컬럼 표시용)
+        s.setPathLabel(nz(product.getComplexName()) + " > " + nz(product.getCategoryName()) + " > " + uid);
         // 위치소속: SKU 는 상품의 단지+위치코드를 상속(요청값보다 상품이 우선)
         if (!isBlank(product.getComplexId())) {
             s.setComplexId(product.getComplexId());
